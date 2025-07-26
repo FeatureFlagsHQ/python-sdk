@@ -1,0 +1,64 @@
+# Include important metadata files
+include README.md
+include LICENSE
+include CHANGELOG.md
+include SECURITY.md
+include CODE_OF_CONDUCT.md
+include CONTRIBUTING.md
+
+# Include requirements files
+include requirements*.txt
+
+# Include configuration files
+include pyproject.toml
+include setup.py
+include tox.ini
+include Makefile
+
+# Include type stubs and markers
+include src/featureflagshq/py.typed
+recursive-include src/featureflagshq *.pyi
+
+# Include test fixtures (but not the tests themselves)
+include tests/fixtures/*.json
+include tests/fixtures/*.yaml
+include tests/fixtures/*.yml
+
+# Include documentation source
+recursive-include docs *.rst *.md *.txt *.py *.yml
+include docs/Makefile
+
+# Include examples
+recursive-include examples *.py *.md
+
+# Include scripts
+recursive-include scripts *.sh *.py
+
+# Exclude development and build artifacts
+exclude .gitignore
+exclude .gitattributes
+exclude .pre-commit-config.yaml
+recursive-exclude * __pycache__
+recursive-exclude * *.py[co]
+recursive-exclude * *.so
+recursive-exclude * .DS_Store
+recursive-exclude * .pytest_cache
+recursive-exclude * .mypy_cache
+recursive-exclude * .coverage
+recursive-exclude * htmlcov
+recursive-exclude * .tox
+recursive-exclude * build
+recursive-exclude * dist
+recursive-exclude * *.egg-info
+
+# Exclude CI/CD files
+recursive-exclude .github *
+
+# Exclude IDE files
+recursive-exclude * .idea
+recursive-exclude * .vscode
+recursive-exclude * *.swp
+recursive-exclude * *.swo
+
+# Exclude test files in final distribution
+recursive-exclude tests *
