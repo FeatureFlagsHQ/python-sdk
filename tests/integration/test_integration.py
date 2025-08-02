@@ -27,6 +27,7 @@ from featureflagshq.exceptions import (
 class TestCompleteWorkflows:
     """Test complete SDK workflows and scenarios"""
 
+    @pytest.mark.timeout(5)
     @responses.activate
     def test_end_to_end_flag_evaluation(self):
         """Test complete end-to-end flag evaluation workflow"""
@@ -99,6 +100,7 @@ class TestCompleteWorkflows:
         finally:
             sdk.shutdown()
 
+    @pytest.mark.timeout(3)
     def test_rollout_percentage_distribution(self):
         """Test rollout percentage distribution with multiple users"""
         sdk = FeatureFlagsHQSDK(
@@ -136,6 +138,7 @@ class TestCompleteWorkflows:
         finally:
             sdk.shutdown()
 
+    @pytest.mark.timeout(15)
     def test_concurrent_access_safety(self):
         """Test thread safety with concurrent access"""
         sdk = FeatureFlagsHQSDK(
@@ -187,6 +190,7 @@ class TestCompleteWorkflows:
         finally:
             sdk.shutdown()
 
+    @pytest.mark.timeout(5)
     @responses.activate
     def test_api_error_handling_and_recovery(self):
         """Test API error handling and recovery mechanisms"""
@@ -249,6 +253,7 @@ class TestCompleteWorkflows:
 class TestComplexScenarios:
     """Test complex real-world scenarios"""
 
+    @pytest.mark.timeout(3)
     def test_ab_testing_scenario(self):
         """Test A/B testing scenario with multiple variants"""
         sdk = FeatureFlagsHQSDK(
@@ -287,6 +292,7 @@ class TestComplexScenarios:
         finally:
             sdk.shutdown()
 
+    @pytest.mark.timeout(3)
     def test_geographic_targeting_scenario(self):
         """Test geographic targeting scenario"""
         sdk = FeatureFlagsHQSDK(
@@ -334,6 +340,7 @@ class TestComplexScenarios:
 class TestFactoryIntegration:
     """Test factory function integration"""
 
+    @pytest.mark.timeout(3)
     def test_create_client_factory(self):
         """Test create_client factory function"""
         client = create_client(
@@ -357,6 +364,7 @@ class TestFactoryIntegration:
         finally:
             client.shutdown()
 
+    @pytest.mark.timeout(3)
     def test_context_manager_integration(self):
         """Test context manager integration"""
         with create_client(

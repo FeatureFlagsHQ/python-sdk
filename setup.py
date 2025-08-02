@@ -89,6 +89,7 @@ if __name__ == "__main__":
                 "pytest-cov>=4.0.0",
                 "pytest-mock>=3.10.0",
                 "pytest-asyncio>=0.21.0",
+                "pytest-timeout>=2.1.0",
                 "responses>=0.23.0",
                 "freezegun>=1.2.0",
             ],

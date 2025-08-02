@@ -34,6 +34,7 @@ from featureflagshq.models import (
 class TestSDKInitialization:
     """Test SDK initialization and configuration"""
 
+    @pytest.mark.timeout(2)
     def test_valid_initialization(self):
         """Test SDK initialization with valid parameters"""
         sdk = FeatureFlagsHQSDK(
@@ -49,6 +50,7 @@ class TestSDKInitialization:
         assert sdk.environment == "production"  # Default
         sdk.shutdown()
 
+    @pytest.mark.timeout(2)
     def test_initialization_with_custom_config(self):
         """Test SDK initialization with custom configuration"""
         sdk = FeatureFlagsHQSDK(
@@ -71,6 +73,7 @@ class TestSDKInitialization:
         assert sdk.debug is True
         sdk.shutdown()
 
+    @pytest.mark.timeout(2)
     def test_missing_credentials_error(self):
         """Test that missing credentials raise configuration error"""
         with pytest.raises(FeatureFlagsHQConfigError):
@@ -79,6 +82,7 @@ class TestSDKInitialization:
         with pytest.raises(FeatureFlagsHQConfigError):
             FeatureFlagsHQSDK(client_id=None, client_secret=None)
 
+    @pytest.mark.timeout(2)
     def test_invalid_polling_interval_error(self):
         """Test that invalid polling interval raises configuration error"""
         with pytest.raises(FeatureFlagsHQConfigError):
@@ -130,6 +134,7 @@ class TestFlagOperations:
         yield sdk
         sdk.shutdown()
 
+    @pytest.mark.timeout(2)
     def test_get_bool(self, sdk_with_flags):
         """Test get_bool method"""
         sdk = sdk_with_flags
@@ -144,6 +149,7 @@ class TestFlagOperations:
         # Inactive flag should return default
         assert sdk.get_bool("user123", "inactive_flag", False) is False
 
+    @pytest.mark.timeout(2)
     def test_get_string(self, sdk_with_flags):
         """Test get_string method"""
         sdk = sdk_with_flags
@@ -152,6 +158,7 @@ class TestFlagOperations:
         assert sdk.get_string("user123", "nonexistent", "default") == "default"
         assert sdk.get_string("user123", "int_flag") == "42"  # Type conversion
 
+    @pytest.mark.timeout(2)
     def test_get_int(self, sdk_with_flags):
         """Test get_int method"""
         sdk = sdk_with_flags
@@ -159,6 +166,7 @@ class TestFlagOperations:
         assert sdk.get_int("user123", "int_flag") == 42
         assert sdk.get_int("user123", "nonexistent", 100) == 100
 
+    @pytest.mark.timeout(2)
     def test_is_flag_enabled_for_user(self, sdk_with_flags):
         """Test is_flag_enabled_for_user method"""
         sdk = sdk_with_flags
@@ -167,6 +175,7 @@ class TestFlagOperations:
         assert sdk.is_flag_enabled_for_user("user123", "nonexistent") is False
         assert sdk.is_flag_enabled_for_user("user123", "inactive_flag") is False
 
+    @pytest.mark.timeout(2)
     def test_get_user_flags(self, sdk_with_flags):
         """Test get_user_flags method"""
         sdk = sdk_with_flags
@@ -204,6 +213,7 @@ class TestInputValidation:
         yield sdk
         sdk.shutdown()
 
+    @pytest.mark.timeout(2)
     def test_user_id_validation(self, sdk):
         """Test user ID validation"""
         # Valid user IDs should work
@@ -224,6 +234,7 @@ class TestInputValidation:
         with pytest.raises(FeatureFlagsHQError):
             sdk._validate_user_id("user\nwith\nnewlines")
 
+    @pytest.mark.timeout(2)
     def test_flag_key_validation(self, sdk):
         """Test flag key validation"""
         # Valid flag keys should work
@@ -256,6 +267,7 @@ class TestUtilityMethods:
         yield sdk
         sdk.shutdown()
 
+    @pytest.mark.timeout(2)
     def test_get_all_flags(self, sdk):
         """Test get_all_flags method"""
         # Add test flag
@@ -278,6 +290,7 @@ class TestUtilityMethods:
         assert flag_info["rollout_percentage"] == 75
         assert flag_info["version"] == 2
 
+    @pytest.mark.timeout(2)
     def test_health_check(self, sdk):
         """Test health check method"""
         health = sdk.get_health_check()
@@ -289,6 +302,7 @@ class TestUtilityMethods:
         assert health["offline_mode"] is True
         assert health["sdk_version"] == __version__
 
+    @pytest.mark.timeout(2)
     def test_get_stats(self, sdk):
         """Test get_stats method"""
         stats = sdk.get_stats()
@@ -302,6 +316,7 @@ class TestUtilityMethods:
 class TestContextManager:
     """Test context manager functionality"""
 
+    @pytest.mark.timeout(3)
     def test_context_manager_usage(self):
         """Test SDK as context manager"""
         with FeatureFlagsHQSDK(
@@ -316,6 +331,7 @@ class TestContextManager:
 class TestFactoryFunction:
     """Test the factory function for creating clients"""
 
+    @pytest.mark.timeout(2)
     def test_create_client_function(self):
         """Test create_client factory function"""
         client = create_client(
@@ -333,6 +349,7 @@ class TestFactoryFunction:
         finally:
             client.shutdown()
 
+    @pytest.mark.timeout(2)
     def test_create_client_with_defaults(self):
         """Test create_client with default values"""
         client = create_client(

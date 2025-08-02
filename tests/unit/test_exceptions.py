@@ -19,6 +19,7 @@ from featureflagshq.exceptions import (
 class TestExceptionHierarchy:
     """Test the exception class hierarchy and inheritance"""
 
+    @pytest.mark.timeout(2)
     def test_base_exception(self):
         """Test base FeatureFlagsHQError exception"""
         error = FeatureFlagsHQError("Base error message")
@@ -27,6 +28,7 @@ class TestExceptionHierarchy:
         assert isinstance(error, Exception)
         assert isinstance(error, FeatureFlagsHQError)
 
+    @pytest.mark.timeout(2)
     def test_auth_error_inheritance(self):
         """Test FeatureFlagsHQAuthError inherits from base"""
         error = FeatureFlagsHQAuthError("Authentication failed")
@@ -35,6 +37,7 @@ class TestExceptionHierarchy:
         assert isinstance(error, FeatureFlagsHQError)
         assert isinstance(error, FeatureFlagsHQAuthError)
 
+    @pytest.mark.timeout(2)
     def test_network_error_inheritance(self):
         """Test FeatureFlagsHQNetworkError inherits from base"""
         error = FeatureFlagsHQNetworkError("Network connection failed")
@@ -43,6 +46,7 @@ class TestExceptionHierarchy:
         assert isinstance(error, FeatureFlagsHQError)
         assert isinstance(error, FeatureFlagsHQNetworkError)
 
+    @pytest.mark.timeout(2)
     def test_config_error_inheritance(self):
         """Test FeatureFlagsHQConfigError inherits from base"""
         error = FeatureFlagsHQConfigError("Invalid configuration")
@@ -51,6 +55,7 @@ class TestExceptionHierarchy:
         assert isinstance(error, FeatureFlagsHQError)
         assert isinstance(error, FeatureFlagsHQConfigError)
 
+    @pytest.mark.timeout(2)
     def test_timeout_error_inheritance(self):
         """Test FeatureFlagsHQTimeoutError inherits from base"""
         error = FeatureFlagsHQTimeoutError("Request timeout")
@@ -63,6 +68,7 @@ class TestExceptionHierarchy:
 class TestSecureFeatureFlagsHQError:
     """Test the enhanced security error class"""
 
+    @pytest.mark.timeout(2)
     def test_basic_secure_error(self):
         """Test basic SecureFeatureFlagsHQError functionality"""
         error = SecureFeatureFlagsHQError("Security issue detected")
@@ -74,6 +80,7 @@ class TestSecureFeatureFlagsHQError:
         assert error.security_impact is False
         assert isinstance(error.timestamp, float)
 
+    @pytest.mark.timeout(2)
     def test_secure_error_with_context(self):
         """Test SecureFeatureFlagsHQError with additional context"""
         context = {
@@ -95,6 +102,7 @@ class TestSecureFeatureFlagsHQError:
         assert error.security_impact is True
         assert isinstance(error.timestamp, float)
 
+    @pytest.mark.timeout(2)
     def test_secure_error_timestamp(self):
         """Test that timestamp is set correctly"""
         start_time = time.time()
@@ -103,6 +111,7 @@ class TestSecureFeatureFlagsHQError:
         
         assert start_time <= error.timestamp <= end_time
 
+    @pytest.mark.timeout(2)
     def test_secure_error_context_defaults(self):
         """Test that context defaults to empty dict"""
         error = SecureFeatureFlagsHQError("Test error", context=None)
@@ -115,6 +124,7 @@ class TestSecureFeatureFlagsHQError:
 class TestExceptionRaising:
     """Test that exceptions can be raised and caught properly"""
 
+    @pytest.mark.timeout(2)
     def test_raise_base_exception(self):
         """Test raising and catching base exception"""
         with pytest.raises(FeatureFlagsHQError) as exc_info:
