@@ -159,6 +159,19 @@ class FeatureFlagsHQFlag:
     def from_dict(cls, data: Dict) -> 'FeatureFlagsHQFlag':
         """Create FeatureFlagsHQFlag from dictionary with validation"""
         try:
+            # Validate required fields exist and are not empty/None
+            name = data['name']
+            type_val = data['type'] 
+            value = data['value']
+            
+            from .exceptions import FeatureFlagsHQConfigError
+            
+            # Additional validation for empty/None values
+            if not name or name == "":
+                raise FeatureFlagsHQConfigError("Flag name cannot be empty or None")
+            if not type_val or type_val == "":
+                raise FeatureFlagsHQConfigError("Flag type cannot be empty or None")
+            
             segments = None
             if data.get('segments'):
                 segments = [FeatureFlagsHQSegment(**segment) for segment in data['segments']]
@@ -167,9 +180,9 @@ class FeatureFlagsHQFlag:
             rollout = FeatureFlagsHQRollout(**rollout_data)
 
             return cls(
-                name=data['name'],
-                type=data['type'],
-                value=data['value'],
+                name=name,
+                type=type_val,
+                value=value,
                 is_active=data.get('is_active', True),
                 created_at=data.get('created_at', datetime.now(timezone.utc).isoformat()),
                 segments=segments,

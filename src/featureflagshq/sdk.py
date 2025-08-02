@@ -515,7 +515,9 @@ class FeatureFlagsHQSDK:
     def _check_circuit_breaker(self) -> bool:
         """Check if circuit breaker allows API calls"""
         if self._circuit_breaker['state'] == 'open':
-            if (time.time() - self._circuit_breaker['last_failure_time']) > self._circuit_breaker['recovery_timeout']:
+            # If last_failure_time is None, circuit breaker should remain open
+            if (self._circuit_breaker['last_failure_time'] is not None and 
+                (time.time() - self._circuit_breaker['last_failure_time']) > self._circuit_breaker['recovery_timeout']):
                 self._circuit_breaker['state'] = 'half-open'
                 logger.info("FeatureFlagsHQ: Circuit breaker moved to half-open state")
                 return True
@@ -959,24 +961,56 @@ class FeatureFlagsHQSDK:
         """Get float feature flag value"""
         value = self.get(user_id, flag_key, default_value, segments)
         try:
+            # If the value is the typed default (0.0) and user provided a different default,
+            # check if this was due to conversion failure by getting the raw flag value
+            if value == 0.0 and default_value != 0.0:
+                # Get the flag to check its raw value
+                with self._flags_lock:
+                    flag = self.feature_flags.get(flag_key)
+                if flag and flag.is_active:
+                    # Try to convert the raw value ourselves
+                    try:
+                        return float(flag.value) if flag.value is not None else float(default_value)
+                    except (ValueError, TypeError):
+                        return float(default_value)
+            
             return float(value) if value is not None else float(default_value)
         except (ValueError, TypeError):
             return float(default_value)
 
-    def get_json(self, user_id: str, flag_key: str, default_value: Dict = None,
-                 segments: Optional[Dict[str, Any]] = None) -> Dict:
+    def get_json(self, user_id: str, flag_key: str, default_value: Any = None,
+                 segments: Optional[Dict[str, Any]] = None) -> Any:
         """Get JSON feature flag value"""
         if default_value is None:
             default_value = {}
 
         value = self.get(user_id, flag_key, default_value, segments)
-        if isinstance(value, dict):
+        
+        # Check if value is the typed default ({}) and user provided a different default
+        if isinstance(value, dict) and value == {} and default_value != {}:
+            # Get the flag to check its raw value
+            with self._flags_lock:
+                flag = self.feature_flags.get(flag_key)
+            if flag and flag.is_active:
+                # Try to convert the raw value ourselves
+                try:
+                    if isinstance(flag.value, str):
+                        return json.loads(flag.value)
+                    return flag.value
+                except (json.JSONDecodeError, AttributeError):
+                    return default_value
+        
+        # Handle already parsed values
+        if not isinstance(value, str):
             return value
+            
+        # Parse string values
         if isinstance(value, str):
             try:
                 return json.loads(value)
             except json.JSONDecodeError:
                 return default_value
+                
         return default_value
 
     def is_flag_enabled_for_user(self, user_id: str, flag_key: str, segments: Optional[Dict[str, Any]] = None) -> bool:
