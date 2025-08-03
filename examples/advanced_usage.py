@@ -15,7 +15,8 @@ import os
 import time
 from typing import Any
 
-from featureflagshq import FeatureFlagsHQSDK, create_production_client, validate_production_config, DEFAULT_API_BASE_URL
+from featureflagshq import FeatureFlagsHQSDK, create_production_client, validate_production_config, \
+    DEFAULT_API_BASE_URL, COMPANY_NAME
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -339,7 +340,7 @@ def performance_testing_example():
 
 def main():
     """Run all advanced examples"""
-    print("FeatureFlagsHQ SDK - Advanced Usage Examples")
+    print(f"{COMPANY_NAME} SDK - Advanced Usage Examples")
     print("=" * 50)
 
     try:

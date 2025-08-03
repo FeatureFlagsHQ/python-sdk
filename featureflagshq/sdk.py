@@ -24,12 +24,13 @@ from urllib3.util.retry import Retry
 
 # Import SDK constants
 try:
-    from . import SDK_VERSION, DEFAULT_API_BASE_URL, USER_AGENT_PREFIX
+    from . import SDK_VERSION, DEFAULT_API_BASE_URL, USER_AGENT_PREFIX, COMPANY_NAME
 except ImportError:
     # Fallback for direct execution
     SDK_VERSION = "1.0.0"
     DEFAULT_API_BASE_URL = "https://api.featureflagshq.com"
-    USER_AGENT_PREFIX = "FeatureFlagsHQ-Python-SDK"
+    COMPANY_NAME = "FeatureFlagsHQ"
+    USER_AGENT_PREFIX = f"{COMPANY_NAME}-Python-SDK"
 
 # Constants
 MAX_USER_ID_LENGTH = 255
@@ -314,7 +315,7 @@ class FeatureFlagsHQSDK:
 
         return {
             'Content-Type': 'application/json',
-            'X-SDK-Provider': 'FeatureFlagsHQ',
+            'X-SDK-Provider': COMPANY_NAME,
             'X-Client-ID': self.client_id,
             'X-Timestamp': timestamp,
             'X-Signature': signature,
@@ -946,5 +947,5 @@ def create_production_client(client_id: str, client_secret: str, environment: st
         **secure_config
     )
 
-    logger.info("Secure FeatureFlagsHQ SDK initialized with production configuration")
+    logger.info(f"Secure {COMPANY_NAME} SDK initialized with production configuration")
     return sdk

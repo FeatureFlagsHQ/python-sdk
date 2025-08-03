@@ -7,10 +7,10 @@ for feature flag management.
 """
 
 import os
-from featureflagshq import FeatureFlagsHQSDK
+from featureflagshq import FeatureFlagsHQSDK, COMPANY_NAME
 
 def main():
-    print("FeatureFlagsHQ SDK - Basic Usage Examples")
+    print(f"{COMPANY_NAME} SDK - Basic Usage Examples")
     print("=" * 50)
     
     # Initialize SDK with credentials

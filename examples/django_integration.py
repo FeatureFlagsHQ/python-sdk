@@ -37,7 +37,7 @@ FEATURE_FLAGS_SERVICE = """
 # myapp/services/feature_flags.py
 
 from django.conf import settings
-from featureflagshq import FeatureFlagsHQSDK, create_production_client, DEFAULT_API_BASE_URL
+from featureflagshq import FeatureFlagsHQSDK, create_production_client, DEFAULT_API_BASE_URL, COMPANY_NAME
 import logging
 
 logger = logging.getLogger(__name__)
@@ -69,12 +69,12 @@ class FeatureFlagService:
                     timeout=getattr(settings, 'FEATUREFLAGSHQ_TIMEOUT', 30),
                     enable_metrics=getattr(settings, 'FEATUREFLAGSHQ_ENABLE_METRICS', True)
                 )
-                logger.info("FeatureFlagsHQ SDK initialized successfully")
+                logger.info(f"{COMPANY_NAME} SDK initialized successfully")
             else:
-                logger.warning("FeatureFlagsHQ credentials not configured")
+                logger.warning(f"{COMPANY_NAME} credentials not configured")
                 self._sdk = None
         except Exception as e:
-            logger.error(f"Failed to initialize FeatureFlagsHQ SDK: {e}")
+            logger.error(f"Failed to initialize {COMPANY_NAME} SDK: {e}")
             self._sdk = None
     
     def get_user_context(self, request):

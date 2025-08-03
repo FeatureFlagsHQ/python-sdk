@@ -5,11 +5,11 @@ from unittest.mock import patch
 
 import responses
 
-from featureflagshq import FeatureFlagsHQSDK, DEFAULT_API_BASE_URL
+from featureflagshq import FeatureFlagsHQSDK, DEFAULT_API_BASE_URL, COMPANY_NAME
 
 
 class TestIntegration(unittest.TestCase):
-    """Integration tests for FeatureFlagsHQ SDK"""
+    f"""Integration tests for {COMPANY_NAME} SDK"""
 
     def setUp(self):
         self.client_id = os.getenv('FEATUREFLAGSHQ_CLIENT_ID', 'test_client_id')
