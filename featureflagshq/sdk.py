@@ -16,8 +16,11 @@ import uuid
 from datetime import datetime, timezone
 from queue import Queue, Empty
 from typing import Any, Dict, Optional, List, Callable
+from urllib.parse import urlparse
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 # Constants
 MAX_USER_ID_LENGTH = 255
@@ -126,8 +129,6 @@ class FeatureFlagsHQSDK:
         self.session.timeout = timeout
 
         # Add retry adapter
-        from requests.adapters import HTTPAdapter
-        from urllib3.util.retry import Retry
         retry_strategy = Retry(
             total=max_retries,
             backoff_factor=0.3,
@@ -143,7 +144,6 @@ class FeatureFlagsHQSDK:
 
     def _validate_url(self, url: str) -> str:
         """Validate and sanitize URL"""
-        from urllib.parse import urlparse
 
         if not url or not isinstance(url, str):
             raise ValueError("API base URL must be a non-empty string")
@@ -310,9 +310,9 @@ class FeatureFlagsHQSDK:
             'X-Timestamp': timestamp,
             'X-Signature': signature,
             'X-Session-ID': self.session_id,
-            'X-SDK-Version': '2.0.0',
+            'X-SDK-Version': '1.0.0',
             'X-Environment': self.environment,
-            'User-Agent': 'FeatureFlagsHQ-Python-SDK/2.0.0'
+            'User-Agent': 'FeatureFlagsHQ-Python-SDK/1.0.0'
         }
 
     def _fetch_flags(self) -> Dict[str, Any]:
@@ -834,7 +834,7 @@ class FeatureFlagsHQSDK:
 
             return {
                 'status': 'healthy' if self._circuit_breaker['state'] != 'open' else 'degraded',
-                'sdk_version': '2.0.0',
+                'sdk_version': '1.0.0',
                 'api_base_url': self.api_base_url,
                 'cached_flags_count': cached_flags_count,
                 'session_id': self.session_id,

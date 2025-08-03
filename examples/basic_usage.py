@@ -1,99 +1,171 @@
 #!/usr/bin/env python3
 """
-FeatureFlagsHQ Python SDK - Basic Usage Example
+FeatureFlagsHQ SDK - Basic Usage Examples
 
-This example demonstrates the core functionality of the FeatureFlagsHQ SDK.
+This example demonstrates basic usage of the FeatureFlagsHQ SDK
+for feature flag management.
 """
 
 import os
-import time
-import featureflagshq
+from featureflagshq import FeatureFlagsHQSDK
 
 def main():
-    """Basic usage example"""
+    print("FeatureFlagsHQ SDK - Basic Usage Examples")
+    print("=" * 50)
     
-    # Get credentials from environment variables
-    client_id = os.getenv('FEATUREFLAGSHQ_CLIENT_ID')
-    client_secret = os.getenv('FEATUREFLAGSHQ_CLIENT_SECRET')
+    # Initialize SDK with credentials
+    # You can set these as environment variables or pass them directly
+    sdk = FeatureFlagsHQSDK(
+        client_id=os.getenv('FEATUREFLAGSHQ_CLIENT_ID', 'your_client_id'),
+        client_secret=os.getenv('FEATUREFLAGSHQ_CLIENT_SECRET', 'your_client_secret'),
+        environment=os.getenv('FEATUREFLAGSHQ_ENVIRONMENT', 'development')
+    )
     
-    if not client_id or not client_secret:
-        print("❌ Please set FEATUREFLAGSHQ_CLIENT_ID and FEATUREFLAGSHQ_CLIENT_SECRET environment variables")
-        print("   export FEATUREFLAGSHQ_CLIENT_ID='your-client-id'")
-        print("   export FEATUREFLAGSHQ_CLIENT_SECRET='your-client-secret'")
-        return
-    
-    # Create client with context manager (recommended)
-    with featureflagshq.create_client(client_id, client_secret) as client:
-        print("🚀 FeatureFlagsHQ SDK initialized successfully!")
+    try:
+        print("✅ SDK initialized successfully")
         
         # Example user
         user_id = "user_123"
         
-        # 1. Boolean flag
-        print("\n📝 Testing Boolean Flags:")
-        new_ui_enabled = client.get_bool(user_id, "new_ui", default_value=False)
-        print(f"   New UI enabled for {user_id}: {new_ui_enabled}")
+        print(f"\n🧪 Testing flags for user: {user_id}")
+        print("-" * 30)
         
-        # 2. String flag
-        print("\n📝 Testing String Flags:")
-        welcome_message = client.get_string(user_id, "welcome_message", default_value="Welcome!")
-        print(f"   Welcome message: '{welcome_message}'")
-        
-        # 3. Integer flag
-        print("\n📝 Testing Integer Flags:")
-        max_items = client.get_int(user_id, "max_items_per_page", default_value=10)
-        print(f"   Max items per page: {max_items}")
-        
-        # 4. Float flag
-        print("\n📝 Testing Float Flags:")
-        discount_rate = client.get_float(user_id, "discount_rate", default_value=0.0)
-        print(f"   Discount rate: {discount_rate:.2%}")
-        
-        # 5. JSON flag
-        print("\n📝 Testing JSON Flags:")
-        ui_config = client.get_json(user_id, "ui_config", default_value={"theme": "light"})
-        print(f"   UI config: {ui_config}")
-        
-        # 6. Using segments for targeting
-        print("\n🎯 Testing Targeted Flags with Segments:")
-        user_segments = {
-            "subscription": "premium",
-            "region": "us-west",
-            "device": "mobile"
-        }
-        
-        premium_feature = client.get_bool(
-            user_id, 
-            "premium_feature", 
-            default_value=False,
-            segments=user_segments
+        # Boolean flag example
+        show_new_feature = sdk.get_bool(
+            user_id=user_id,
+            flag_name="new_dashboard",
+            default_value=False
         )
-        print(f"   Premium feature enabled: {premium_feature}")
+        print(f"🎛️  New Dashboard Enabled: {show_new_feature}")
         
-        # 7. Batch flag evaluation
-        print("\n📦 Testing Batch Flag Evaluation:")
-        flag_keys = ["new_ui", "premium_feature", "max_items_per_page"]
-        user_flags = client.get_user_flags(user_id, segments=user_segments, flag_keys=flag_keys)
+        # String flag example
+        theme_color = sdk.get_string(
+            user_id=user_id,
+            flag_name="theme_color",
+            default_value="blue"
+        )
+        print(f"🎨 Theme Color: {theme_color}")
         
-        print("   User's flags:")
-        for flag_name, flag_value in user_flags.items():
-            print(f"     {flag_name}: {flag_value}")
+        # Integer flag example
+        max_items = sdk.get_int(
+            user_id=user_id,
+            flag_name="max_items_per_page",
+            default_value=10
+        )
+        print(f"📄 Max Items Per Page: {max_items}")
         
-        # 8. SDK statistics
-        print("\n📊 SDK Statistics:")
-        stats = client.get_stats()
-        print(f"   Total evaluations: {stats['total_user_accesses']}")
-        print(f"   Unique users: {stats.get('unique_users_count', 0)}")
-        print(f"   Average evaluation time: {stats['evaluation_times']['avg_ms']:.2f}ms")
+        # Float flag example
+        discount_rate = sdk.get_float(
+            user_id=user_id,
+            flag_name="discount_rate",
+            default_value=0.0
+        )
+        print(f"💰 Discount Rate: {discount_rate}%")
         
-        # 9. Health check
-        print("\n🏥 Health Check:")
-        health = client.get_health_check()
+        # JSON flag example
+        feature_config = sdk.get_json(
+            user_id=user_id,
+            flag_name="feature_config",
+            default_value={"enabled": False, "timeout": 30}
+        )
+        print(f"⚙️  Feature Config: {feature_config}")
+        
+        # Check if a flag is enabled (convenience method)
+        is_beta_user = sdk.is_flag_enabled_for_user(
+            user_id=user_id,
+            flag_name="beta_features"
+        )
+        print(f"🧪 Beta Features Enabled: {is_beta_user}")
+        
+        # Get multiple flags at once
+        print(f"\n📊 All flags for user {user_id}:")
+        print("-" * 30)
+        all_flags = sdk.get_user_flags(user_id)
+        for flag_name, flag_value in all_flags.items():
+            print(f"   {flag_name}: {flag_value}")
+        
+        # SDK health check
+        print(f"\n🏥 SDK Health Check:")
+        print("-" * 30)
+        health = sdk.get_health_check()
         print(f"   Status: {health['status']}")
-        print(f"   Cached flags: {health['cached_flags_count']}")
-        print(f"   Last sync: {health['last_sync']}")
+        print(f"   Cached Flags: {health['cached_flags_count']}")
+        print(f"   Environment: {health['environment']}")
         
-        print("\n✅ Example completed successfully!")
+        # SDK usage statistics
+        print(f"\n📈 SDK Statistics:")
+        print("-" * 30)
+        stats = sdk.get_stats()
+        print(f"   Total Access Calls: {stats['total_user_accesses']}")
+        print(f"   Unique Users: {stats['unique_users_count']}")
+        print(f"   API Calls: {stats['api_calls']['total']} (Success: {stats['api_calls']['successful']})")
+        
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        
+    finally:
+        # Always clean up resources
+        print(f"\n🧹 Shutting down SDK...")
+        sdk.shutdown()
+        print("✅ SDK shutdown complete")
+
+
+def example_with_context_manager():
+    """Example using context manager for automatic cleanup"""
+    print(f"\n🔄 Context Manager Example:")
+    print("-" * 30)
+    
+    # Using context manager - automatic cleanup
+    with FeatureFlagsHQSDK(
+        client_id=os.getenv('FEATUREFLAGSHQ_CLIENT_ID', 'your_client_id'),
+        client_secret=os.getenv('FEATUREFLAGSHQ_CLIENT_SECRET', 'your_client_secret'),
+        environment='development'
+    ) as sdk:
+        
+        result = sdk.get_bool("user_456", "auto_save", default_value=True)
+        print(f"   Auto Save Enabled: {result}")
+        
+        # SDK automatically shuts down when exiting the context
+    
+    print("   ✅ SDK automatically cleaned up")
+
+
+def example_error_handling():
+    """Example demonstrating error handling"""
+    print(f"\n🛡️  Error Handling Example:")
+    print("-" * 30)
+    
+    try:
+        # Example with invalid credentials
+        sdk = FeatureFlagsHQSDK(
+            client_id="invalid_id",
+            client_secret="invalid_secret",
+            offline_mode=True  # Use offline mode to prevent actual API calls
+        )
+        
+        # SDK will still work but return default values
+        result = sdk.get_bool("user_789", "test_flag", default_value=False)
+        print(f"   Flag value (offline): {result}")
+        
+        # Check SDK health to see issues
+        health = sdk.get_health_check()
+        print(f"   SDK Status: {health['status']}")
+        
+        sdk.shutdown()
+        
+    except ValueError as e:
+        print(f"   ⚠️  Configuration Error: {e}")
+    except Exception as e:
+        print(f"   ❌ Unexpected Error: {e}")
+
 
 if __name__ == "__main__":
+    print("To run this example:")
+    print("1. Set your credentials as environment variables:")
+    print("   export FEATUREFLAGSHQ_CLIENT_ID='your_client_id'")
+    print("   export FEATUREFLAGSHQ_CLIENT_SECRET='your_client_secret'")
+    print("2. Run: python examples/basic_usage.py\n")
+    
     main()
+    example_with_context_manager()
+    example_error_handling()
