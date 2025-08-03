@@ -21,7 +21,7 @@ from .models import (
     __version__,
     BRAND_NAME
 )
-from .sdk import FeatureFlagsHQSDK, create_production_client
+from .sdk import FeatureFlagsHQSDK
 
 # Convenience aliases
 FeatureFlagsHQ = FeatureFlagsHQSDK
@@ -51,7 +51,7 @@ def create_client(
         >>> client = featureflagshq.create_client("your-id", "your-secret")
         >>> enabled = client.is_flag_enabled_for_user("user123", "new_feature")
     """
-    return create_production_client(
+    return FeatureFlagsHQSDK(
         client_id=client_id,
         client_secret=client_secret,
         environment=environment,
