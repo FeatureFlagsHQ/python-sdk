@@ -88,6 +88,82 @@ class TestFeatureFlagsHQSDK(unittest.TestCase):
 
             sdk.shutdown()
 
+    def test_url_validation(self):
+        """Test URL validation functionality"""
+        # Test invalid URL schemes
+        with self.assertRaises(ValueError) as cm:
+            FeatureFlagsHQSDK(
+                client_id="test",
+                client_secret="test",
+                api_base_url="ftp://example.com"
+            )
+        self.assertIn("Invalid URL scheme", str(cm.exception))
+
+        # Test empty URL
+        with self.assertRaises(ValueError) as cm:
+            FeatureFlagsHQSDK(
+                client_id="test",
+                client_secret="test",
+                api_base_url=""
+            )
+        self.assertIn("API base URL must be a non-empty string", str(cm.exception))
+
+        # Test invalid URL (missing hostname)
+        with self.assertRaises(ValueError) as cm:
+            FeatureFlagsHQSDK(
+                client_id="test",
+                client_secret="test",
+                api_base_url="https://"
+            )
+        self.assertIn("Invalid URL: missing hostname", str(cm.exception))
+
+        # Test non-string URL
+        with self.assertRaises(ValueError) as cm:
+            FeatureFlagsHQSDK(
+                client_id="test",
+                client_secret="test",
+                api_base_url=123
+            )
+        self.assertIn("API base URL must be a non-empty string", str(cm.exception))
+
+    def test_string_validation_edge_cases(self):
+        """Test string validation edge cases"""
+        with patch('featureflagshq.sdk.requests.Session'):
+            sdk = FeatureFlagsHQSDK(
+                client_id=self.client_id,
+                client_secret=self.client_secret,
+                offline_mode=True
+            )
+
+            # Test too long user ID
+            long_user_id = "a" * 256  # Exceeds MAX_USER_ID_LENGTH
+            with self.assertRaises(ValueError) as cm:
+                sdk._validate_user_id(long_user_id)
+            self.assertIn("too long", str(cm.exception))
+
+            # Test too long flag name
+            long_flag_name = "a" * 256  # Exceeds MAX_FLAG_NAME_LENGTH
+            with self.assertRaises(ValueError) as cm:
+                sdk._validate_flag_name(long_flag_name)
+            self.assertIn("too long", str(cm.exception))
+
+            # Test non-string inputs
+            with self.assertRaises(ValueError) as cm:
+                sdk._validate_string(123, "test_field")
+            self.assertIn("must be a string", str(cm.exception))
+
+            # Test empty string after stripping
+            with self.assertRaises(ValueError) as cm:
+                sdk._validate_string("   ", "test_field")
+            self.assertIn("cannot be empty", str(cm.exception))
+
+            # Test control characters in string
+            with self.assertRaises(ValueError) as cm:
+                sdk._validate_user_id("user\nwith\nnewlines")
+            self.assertIn("contains invalid characters", str(cm.exception))
+
+            sdk.shutdown()
+
     def test_flag_evaluation_with_segments(self):
         """Test flag evaluation with user segments"""
         with patch('featureflagshq.sdk.requests.Session'):
@@ -349,6 +425,223 @@ class TestFeatureFlagsHQSDK(unittest.TestCase):
                 result = sdk.get_bool("user123", "test_flag", default_value=True)
                 self.assertTrue(result)
             # SDK should be automatically shut down
+
+    def test_environment_variable_initialization(self):
+        """Test SDK initialization from environment variables"""
+        import os
+        
+        # Mock environment variables
+        with patch.dict(os.environ, {
+            'FEATUREFLAGSHQ_CLIENT_ID': 'env_client_id',
+            'FEATUREFLAGSHQ_CLIENT_SECRET': 'env_client_secret',
+            'FEATUREFLAGSHQ_ENVIRONMENT': 'env_test'
+        }):
+            with patch('featureflagshq.sdk.requests.Session'):
+                sdk = FeatureFlagsHQSDK(offline_mode=True)
+                
+                # Should use environment variables
+                self.assertEqual(sdk.client_id, 'env_client_id')
+                self.assertEqual(sdk.client_secret, 'env_client_secret')
+                self.assertEqual(sdk.environment, 'env_test')
+                
+                sdk.shutdown()
+
+    def test_json_and_float_flag_types(self):
+        """Test JSON and float flag type handling"""
+        with patch('featureflagshq.sdk.requests.Session'):
+            sdk = FeatureFlagsHQSDK(
+                client_id=self.client_id,
+                client_secret=self.client_secret,
+                offline_mode=True
+            )
+
+            # Test JSON conversion
+            json_data = {"key": "value", "number": 42}
+            result = sdk._convert_value(json_data, "json")
+            self.assertEqual(result, json_data)
+
+            # Test JSON string conversion
+            json_string = '{"test": "data"}'
+            result = sdk._convert_value(json_string, "json")
+            self.assertEqual(result, {"test": "data"})
+
+            # Test float conversion
+            result = sdk._convert_value("3.14", "float")
+            self.assertEqual(result, 3.14)
+
+            # Test float from integer string
+            result = sdk._convert_value("42", "float")
+            self.assertEqual(result, 42.0)
+
+            # Test get_json method
+            result = sdk.get_json("user123", "config_flag", default_value={"default": True})
+            self.assertEqual(result, {"default": True})
+
+            # Test get_float method
+            result = sdk.get_float("user123", "rate_flag", default_value=1.5)
+            self.assertEqual(result, 1.5)
+
+            sdk.shutdown()
+
+    def test_circuit_breaker_recovery(self):
+        """Test circuit breaker recovery functionality"""
+        with patch('featureflagshq.sdk.requests.Session'):
+            sdk = FeatureFlagsHQSDK(
+                client_id=self.client_id,
+                client_secret=self.client_secret,
+                offline_mode=True
+            )
+
+            # Initially should be closed
+            self.assertTrue(sdk._check_circuit_breaker())
+
+            # Trigger circuit breaker to open
+            for _ in range(6):  # Threshold is 5
+                sdk._record_api_failure()
+
+            # Should now be open
+            self.assertFalse(sdk._check_circuit_breaker())
+
+            # Simulate time passing for recovery
+            import time
+            original_time = time.time
+            mock_time = original_time() + 61  # More than recovery time
+
+            with patch('time.time', return_value=mock_time):
+                # Should allow one test call (half-open state)
+                self.assertTrue(sdk._check_circuit_breaker())
+
+                # Record success to close circuit breaker
+                sdk._record_api_success()
+                self.assertTrue(sdk._check_circuit_breaker())
+
+            sdk.shutdown()
+
+    def test_memory_cleanup_functionality(self):
+        """Test memory cleanup for users and flags tracking"""
+        with patch('featureflagshq.sdk.requests.Session'):
+            sdk = FeatureFlagsHQSDK(
+                client_id=self.client_id,
+                client_secret=self.client_secret,
+                offline_mode=True
+            )
+
+            # Add many users to trigger cleanup by calling get_bool
+            for i in range(15000):  # Exceeds MAX_UNIQUE_USERS_TRACKED
+                user_id = f"user_{i}"
+                sdk.get_bool(user_id, "test_flag", default_value=True)
+
+            # Check that cleanup occurred
+            stats = sdk.get_stats()
+            self.assertLessEqual(stats['unique_users_count'], 10000)  # MAX_UNIQUE_USERS_TRACKED
+
+            sdk.shutdown()
+
+    def test_log_uploading_functionality(self):
+        """Test log uploading and batching"""
+        with patch('featureflagshq.sdk.requests.Session') as mock_session:
+            # Mock successful response
+            mock_response = mock_session.return_value.post.return_value
+            mock_response.status_code = 200
+            mock_response.json.return_value = {"status": "success"}
+
+            sdk = FeatureFlagsHQSDK(
+                client_id=self.client_id,
+                client_secret=self.client_secret,
+                offline_mode=False  # Need online mode for log upload
+            )
+
+            # Generate some user activity to create logs
+            for i in range(10):
+                sdk.get_bool(f"user_{i}", "test_flag", default_value=True)
+
+            # Test manual log flush
+            result = sdk.flush_logs()
+            self.assertTrue(result)
+
+            # Verify API was called
+            mock_session.return_value.post.assert_called()
+
+            sdk.shutdown()
+
+    def test_error_scenarios_and_edge_cases(self):
+        """Test various error scenarios and edge cases"""
+        with patch('featureflagshq.sdk.requests.Session'):
+            sdk = FeatureFlagsHQSDK(
+                client_id=self.client_id,
+                client_secret=self.client_secret,
+                offline_mode=True
+            )
+
+            # Test invalid conversion types (returns defaults, doesn't raise)
+            result = sdk._convert_value("invalid_json", "json")
+            self.assertEqual(result, {})  # Default for json type
+
+            result = sdk._convert_value("not_a_number", "int")
+            self.assertEqual(result, 0)  # Default for int type
+
+            result = sdk._convert_value("not_a_float", "float")
+            self.assertEqual(result, 0.0)  # Default for float type
+
+            # Test flag evaluation with invalid segments
+            invalid_segments = {"": "value"}  # Empty key
+            result = sdk.get_bool("user123", "test_flag", 
+                                segments=invalid_segments, default_value=False)
+            self.assertFalse(result)
+
+            # Test refresh with offline mode
+            result = sdk.refresh_flags()
+            self.assertFalse(result)  # Should fail in offline mode
+
+            sdk.shutdown()
+
+    @responses.activate
+    def test_background_polling_functionality(self):
+        """Test background polling for flag updates"""
+        # Mock flag response
+        mock_response = {
+            "data": [
+                {
+                    "name": "test_flag",
+                    "value": True,
+                    "type": "bool",
+                    "is_active": True
+                }
+            ]
+        }
+
+        responses.add(
+            responses.GET,
+            f"{DEFAULT_API_BASE_URL}/v1/flags/",
+            json=mock_response,
+            status=200
+        )
+
+        sdk = FeatureFlagsHQSDK(
+            client_id=self.client_id,
+            client_secret=self.client_secret,
+            offline_mode=False  # Enable polling
+        )
+
+        try:
+            # Wait a bit for initialization
+            import time
+            time.sleep(0.2)
+
+            # Test manual refresh
+            result = sdk.refresh_flags()
+            self.assertTrue(result)
+
+            # Verify flags were loaded
+            flag_result = sdk.get_bool("user123", "test_flag", default_value=False)
+            # Should return True based on mock response
+
+            # Test stats after polling
+            stats = sdk.get_stats()
+            self.assertGreaterEqual(stats['api_calls']['successful'], 1)
+
+        finally:
+            sdk.shutdown()
 
 
 class TestProductionHelpers(unittest.TestCase):
