@@ -1,45 +1,71 @@
 """
-Simplified FeatureFlagsHQ SDK - Clean and focused implementation
-Core functionality without over-engineering
+FeatureFlagsHQ SDK - Core functionality
 """
 
-import json
-import time
-import threading
+import base64
 import hashlib
 import hmac
-import base64
-import uuid
-import platform
+import json
+import logging
 import os
-from typing import Any, Dict, Optional, List
+import platform
+import re
+import threading
+import time
+import uuid
 from datetime import datetime, timezone
 from queue import Queue, Empty
+from typing import Any, Dict, Optional, List, Callable
+
 import requests
-import logging
 
 # Constants
 MAX_USER_ID_LENGTH = 255
 MAX_FLAG_NAME_LENGTH = 255
 POLLING_INTERVAL = 300  # 5 minutes
 LOG_UPLOAD_INTERVAL = 120  # 2 minutes
+MAX_UNIQUE_USERS_TRACKED = 10000
+MAX_UNIQUE_FLAGS_TRACKED = 1000
 
-# Setup logging
+
+# Setup logging with security filter
+class SecurityFilter(logging.Filter):
+    """Filter to prevent sensitive data from being logged"""
+    SENSITIVE_PATTERNS = [
+        re.compile(r'secret["\']?\s*[:=]\s*["\']?([^"\'\\s]+)', re.IGNORECASE),
+        re.compile(r'signature["\']?\s*[:=]\s*["\']?([^"\'\\s]+)', re.IGNORECASE),
+    ]
+
+    def filter(self, record):
+        if hasattr(record, 'msg'):
+            message = str(record.msg)
+            for pattern in self.SENSITIVE_PATTERNS:
+                message = pattern.sub(r'\1[REDACTED]', message)
+            record.msg = message
+        return True
+
+
 logger = logging.getLogger('featureflagshq_sdk2')
 if not logger.handlers:
     handler = logging.StreamHandler()
     handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+    handler.addFilter(SecurityFilter())
     logger.addHandler(handler)
     logger.setLevel(logging.INFO)
 
 
 class FeatureFlagsHQSDK:
-    """Simplified Feature Flag SDK"""
+    """Enhanced Feature Flag SDK with security and missing features"""
 
-    def __init__(self, client_id: str = None, client_secret: str = None, api_base_url: str = "https://api.featureflagshq.com", environment: str = None):
+    def __init__(self, client_id: str = None, client_secret: str = None,
+                 api_base_url: str = "https://api.featureflagshq.com",
+                 environment: str = None, timeout: int = 30, max_retries: int = 3,
+                 offline_mode: bool = False, enable_metrics: bool = True,
+                 on_flag_change: Optional[Callable[[str, Any, Any], None]] = None):
+
         # Get credentials from environment if not provided
         if not client_id:
-            client_id = os.getenv('FEATUREFLAGSHQ_CLIENT_ID')
+            client_id = os.getenv('FEATUREFLAGSHQ_CLIENT_ID') or os.getenv('FEATUREFLAGSHQ_CLIENT_KEY')
         if not client_secret:
             client_secret = os.getenv('FEATUREFLAGSHQ_CLIENT_SECRET')
         if not environment:
@@ -47,19 +73,49 @@ class FeatureFlagsHQSDK:
 
         # Validate inputs
         if not client_id or not client_secret:
-            raise ValueError("client_id and client_secret are required (provide directly or via FEATUREFLAGSHQ_CLIENT_ID and FEATUREFLAGSHQ_CLIENT_SECRET environment variables)")
+            raise ValueError("client_id and client_secret are required")
 
         self.client_id = self._validate_string(client_id, "client_id")
         self.client_secret = self._validate_string(client_secret, "client_secret")
-        self.api_base_url = api_base_url.rstrip('/')
+        self.api_base_url = self._validate_url(api_base_url)
         self.environment = self._validate_string(environment, "environment")
+        self.timeout = timeout
+        self.max_retries = max_retries
+        self.offline_mode = offline_mode
+        self.enable_metrics = enable_metrics
+        self.on_flag_change = on_flag_change
 
         # Internal state
         self.flags = {}  # flag_name -> flag_data
         self.session_id = str(uuid.uuid4())
         self.logs_queue = Queue()
         self._lock = threading.RLock()
+        self._stats_lock = threading.Lock()
         self._stop_event = threading.Event()
+        self._initialization_complete = threading.Event()
+
+        # Enhanced statistics
+        self.stats = {
+            'total_user_accesses': 0,
+            'unique_users': set(),
+            'unique_flags_accessed': set(),
+            'last_sync': None,
+            'last_log_upload': None,
+            'api_calls': {'successful': 0, 'failed': 0, 'total': 0},
+            'errors': {'network_errors': 0, 'auth_errors': 0, 'other_errors': 0}
+        }
+
+        # Circuit breaker for API calls
+        self._circuit_breaker = {
+            'failure_count': 0,
+            'last_failure_time': None,
+            'state': 'closed',  # closed, open, half-open
+            'failure_threshold': 5,
+            'recovery_timeout': 60
+        }
+
+        # Rate limiting
+        self._rate_limits = {}
 
         # Background threads
         self._polling_thread = None
@@ -67,22 +123,49 @@ class FeatureFlagsHQSDK:
 
         # Session for HTTP requests
         self.session = requests.Session()
-        self.session.timeout = 10
+        self.session.timeout = timeout
+
+        # Add retry adapter
+        from requests.adapters import HTTPAdapter
+        from urllib3.util.retry import Retry
+        retry_strategy = Retry(
+            total=max_retries,
+            backoff_factor=0.3,
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=["HEAD", "GET", "POST"]
+        )
+        adapter = HTTPAdapter(max_retries=retry_strategy)
+        self.session.mount("http://", adapter)
+        self.session.mount("https://", adapter)
 
         # Start SDK
         self._initialize()
+
+    def _validate_url(self, url: str) -> str:
+        """Validate and sanitize URL"""
+        from urllib.parse import urlparse
+
+        if not url or not isinstance(url, str):
+            raise ValueError("API base URL must be a non-empty string")
+
+        parsed = urlparse(url)
+        if parsed.scheme not in ['http', 'https']:
+            raise ValueError("Invalid URL scheme. Only http and https are allowed")
+
+        if not parsed.netloc:
+            raise ValueError("Invalid URL: missing hostname")
+
+        return url.rstrip('/')
 
     def _validate_string(self, value: str, field_name: str, max_length: int = 255) -> str:
         """Validate and sanitize string inputs"""
         if not isinstance(value, str):
             raise ValueError(f"{field_name} must be a string")
 
-        # Remove dangerous characters
         value = value.strip()
         if not value:
             raise ValueError(f"{field_name} cannot be empty")
 
-        # Check length
         if len(value) > max_length:
             raise ValueError(f"{field_name} too long (max {max_length} characters)")
 
@@ -102,12 +185,108 @@ class FeatureFlagsHQSDK:
         return value
 
     def _validate_user_id(self, user_id: str) -> str:
-        """Validate user ID"""
-        return self._validate_string(user_id, "user_id", MAX_USER_ID_LENGTH)
+        """Enhanced user ID validation"""
+        if user_id is None:
+            raise ValueError("user_id cannot be None")
+
+        user_id = self._validate_string(user_id, "user_id", MAX_USER_ID_LENGTH)
+
+        # Additional pattern validation for user IDs
+        if not re.match(r'^[a-zA-Z0-9_@\.\-\+]+$', user_id):
+            logger.warning(f"Potentially unsafe user_id pattern: {user_id[:50]}...")
+
+        return user_id
 
     def _validate_flag_name(self, flag_name: str) -> str:
-        """Validate flag name"""
-        return self._validate_string(flag_name, "flag_name", MAX_FLAG_NAME_LENGTH)
+        """Enhanced flag name validation"""
+        if flag_name is None:
+            raise ValueError("flag_name cannot be None")
+
+        flag_name = self._validate_string(flag_name, "flag_name", MAX_FLAG_NAME_LENGTH)
+
+        # Flag names should be alphanumeric + underscores/hyphens
+        if not re.match(r'^[a-zA-Z0-9_\-]+$', flag_name):
+            raise ValueError("flag_name contains invalid characters")
+
+        return flag_name
+
+    def _rate_limit_check(self, user_id: str) -> bool:
+        """Basic rate limiting per user"""
+        if self.offline_mode:
+            return True
+
+        current_time = time.time()
+
+        # Clean up old entries
+        self._rate_limits = {
+            uid: (count, last_time) for uid, (count, last_time) in self._rate_limits.items()
+            if current_time - last_time < 60
+        }
+
+        # Check current user's rate
+        if user_id in self._rate_limits:
+            count, last_time = self._rate_limits[user_id]
+            if current_time - last_time < 60:
+                if count > 1000:  # Max 1000 requests per minute per user
+                    logger.warning(f"Rate limit exceeded for user: {user_id}")
+                    return False
+                self._rate_limits[user_id] = (count + 1, current_time)
+            else:
+                self._rate_limits[user_id] = (1, current_time)
+        else:
+            self._rate_limits[user_id] = (1, current_time)
+
+        return True
+
+    def _check_circuit_breaker(self) -> bool:
+        """Check if circuit breaker allows API calls"""
+        if self._circuit_breaker['state'] == 'open':
+            if (self._circuit_breaker['last_failure_time'] and
+                    (time.time() - self._circuit_breaker['last_failure_time']) > self._circuit_breaker[
+                        'recovery_timeout']):
+                self._circuit_breaker['state'] = 'half-open'
+                logger.info("Circuit breaker moved to half-open state")
+                return True
+            return False
+        return True
+
+    def _record_api_success(self):
+        """Record successful API call"""
+        with self._stats_lock:
+            self.stats['api_calls']['successful'] += 1
+            self.stats['api_calls']['total'] += 1
+
+        if self._circuit_breaker['state'] == 'half-open':
+            self._circuit_breaker['state'] = 'closed'
+            self._circuit_breaker['failure_count'] = 0
+            logger.info("Circuit breaker closed after successful call")
+
+    def _record_api_failure(self, error_type: str = 'other_errors'):
+        """Record API failure and update circuit breaker"""
+        with self._stats_lock:
+            self.stats['api_calls']['failed'] += 1
+            self.stats['api_calls']['total'] += 1
+            self.stats['errors'][error_type] += 1
+
+        self._circuit_breaker['failure_count'] += 1
+        self._circuit_breaker['last_failure_time'] = time.time()
+
+        if self._circuit_breaker['failure_count'] >= self._circuit_breaker['failure_threshold']:
+            self._circuit_breaker['state'] = 'open'
+            logger.warning("Circuit breaker opened due to repeated failures")
+
+    def _cleanup_old_stats(self):
+        """Cleanup old statistics to prevent memory bloat"""
+        with self._stats_lock:
+            if len(self.stats['unique_users']) > MAX_UNIQUE_USERS_TRACKED:
+                users_list = list(self.stats['unique_users'])
+                self.stats['unique_users'] = set(users_list[-MAX_UNIQUE_USERS_TRACKED:])
+                logger.info(f"Cleaned up old user stats, keeping {MAX_UNIQUE_USERS_TRACKED} most recent")
+
+            if len(self.stats['unique_flags_accessed']) > MAX_UNIQUE_FLAGS_TRACKED:
+                flags_list = list(self.stats['unique_flags_accessed'])
+                self.stats['unique_flags_accessed'] = set(flags_list[-MAX_UNIQUE_FLAGS_TRACKED:])
+                logger.info(f"Cleaned up old flag stats, keeping {MAX_UNIQUE_FLAGS_TRACKED} most recent")
 
     def _generate_signature(self, payload: str, timestamp: str) -> str:
         """Generate HMAC signature for API authentication"""
@@ -117,8 +296,7 @@ class FeatureFlagsHQSDK:
             message.encode('utf-8'),
             hashlib.sha256
         ).digest()
-        signature_b64 = base64.b64encode(signature).decode('utf-8')
-        return signature_b64
+        return base64.b64encode(signature).decode('utf-8')
 
     def _get_headers(self, payload: str = "") -> Dict[str, str]:
         """Get headers for API requests"""
@@ -138,13 +316,23 @@ class FeatureFlagsHQSDK:
         }
 
     def _fetch_flags(self) -> Dict[str, Any]:
-        """Fetch flags from server"""
+        """Fetch flags from server with circuit breaker"""
+        if self.offline_mode or not self._check_circuit_breaker():
+            return {}
+
         try:
             url = f"{self.api_base_url}/v1/flags/"
             headers = self._get_headers("")
 
             response = self.session.get(url, headers=headers)
+
+            if response.status_code == 401:
+                self._record_api_failure('auth_errors')
+                logger.error("Authentication failed - check credentials")
+                return {}
+
             response.raise_for_status()
+            self._record_api_success()
 
             data = response.json()
             flags = {}
@@ -159,7 +347,16 @@ class FeatureFlagsHQSDK:
             logger.info(f"Fetched {len(flags)} flags from server")
             return flags
 
+        except requests.exceptions.Timeout:
+            self._record_api_failure('network_errors')
+            logger.warning("Request timeout during flag fetch")
+            return {}
+        except requests.exceptions.ConnectionError:
+            self._record_api_failure('network_errors')
+            logger.warning("Connection error during flag fetch")
+            return {}
         except Exception as e:
+            self._record_api_failure()
             logger.error(f"Failed to fetch flags: {e}")
             return {}
 
@@ -272,6 +469,9 @@ class FeatureFlagsHQSDK:
 
     def _log_access(self, user_id: str, flag_name: str, flag_value: Any, segments: Optional[Dict] = None):
         """Log flag access for analytics"""
+        if not self.enable_metrics:
+            return
+
         log_entry = {
             'user_id': user_id,
             'flag_name': flag_name,
@@ -293,9 +493,19 @@ class FeatureFlagsHQSDK:
             # Queue is full, ignore
             pass
 
+        # Update statistics
+        with self._stats_lock:
+            self.stats['total_user_accesses'] += 1
+            self.stats['unique_users'].add(user_id)
+            self.stats['unique_flags_accessed'].add(flag_name)
+
+        # Cleanup stats periodically
+        if self.stats['total_user_accesses'] % 1000 == 0:
+            self._cleanup_old_stats()
+
     def _upload_logs(self):
         """Upload logs to server"""
-        if self.logs_queue.empty():
+        if self.offline_mode or self.logs_queue.empty() or not self._check_circuit_breaker():
             return
 
         logs = []
@@ -316,26 +526,47 @@ class FeatureFlagsHQSDK:
 
             response = self.session.post(url, json=payload, headers=headers)
             response.raise_for_status()
+            self._record_api_success()
 
+            self.stats['last_log_upload'] = datetime.now(timezone.utc).isoformat()
             logger.debug(f"Uploaded {len(logs)} log entries")
 
         except Exception as e:
+            self._record_api_failure()
             logger.error(f"Failed to upload logs: {e}")
-            # Put logs back in queue for retry
-            for log in logs:
-                try:
-                    self.logs_queue.put(log, block=False)
-                except:
-                    break
+            # Put logs back in queue for retry (limit to prevent memory bloat)
+            if len(logs) <= 10:
+                for log in logs:
+                    try:
+                        self.logs_queue.put(log, block=False)
+                    except:
+                        break
 
     def _polling_worker(self):
-        """Background worker to poll for flag updates"""
+        """Background worker to poll for flag updates with change detection"""
         while not self._stop_event.wait(POLLING_INTERVAL):
             try:
+                old_flags = dict(self.flags) if self.on_flag_change else {}
                 new_flags = self._fetch_flags()
+
                 if new_flags:
                     with self._lock:
+                        # Detect changes for callbacks
+                        if self.on_flag_change:
+                            for flag_name, new_flag_data in new_flags.items():
+                                old_flag_data = old_flags.get(flag_name)
+                                old_value = old_flag_data.get('value') if old_flag_data else None
+                                new_value = new_flag_data.get('value')
+
+                                if old_value != new_value:
+                                    try:
+                                        self.on_flag_change(flag_name, old_value, new_value)
+                                    except Exception as e:
+                                        logger.error(f"Error in flag change callback: {e}")
+
                         self.flags.update(new_flags)
+
+                    self.stats['last_sync'] = datetime.now(timezone.utc).isoformat()
                     logger.debug("Updated flags from polling")
             except Exception as e:
                 logger.error(f"Error in polling worker: {e}")
@@ -350,44 +581,68 @@ class FeatureFlagsHQSDK:
 
     def _initialize(self):
         """Initialize SDK"""
-        # Initial fetch
-        initial_flags = self._fetch_flags()
-        with self._lock:
-            self.flags = initial_flags
+        try:
+            if not self.offline_mode:
+                # Initial fetch
+                initial_flags = self._fetch_flags()
+                with self._lock:
+                    self.flags = initial_flags
 
-        # Start background threads
-        self._polling_thread = threading.Thread(
-            target=self._polling_worker,
-            daemon=True,
-            name="FlagPolling"
-        )
-        self._polling_thread.start()
+                # Start background threads
+                self._polling_thread = threading.Thread(
+                    target=self._polling_worker,
+                    daemon=True,
+                    name="FlagPolling"
+                )
+                self._polling_thread.start()
 
-        self._log_upload_thread = threading.Thread(
-            target=self._log_upload_worker,
-            daemon=True,
-            name="LogUpload"
-        )
-        self._log_upload_thread.start()
+                if self.enable_metrics:
+                    self._log_upload_thread = threading.Thread(
+                        target=self._log_upload_worker,
+                        daemon=True,
+                        name="LogUpload"
+                    )
+                    self._log_upload_thread.start()
 
-        logger.info("SDK initialized successfully")
+            logger.info("SDK initialized successfully")
+        except Exception as e:
+            logger.warning(f"SDK initialization failed: {e}, continuing in degraded mode")
+        finally:
+            self._initialization_complete.set()
 
     # Public methods
 
-    def get(self, user_id: str, flag_name: str, default_value: Any = None, segments: Optional[Dict[str, Any]] = None) -> Any:
-        """Get flag value for user"""
+    def get(self, user_id: str, flag_name: str, default_value: Any = None,
+            segments: Optional[Dict[str, Any]] = None) -> Any:
+        """Get flag value for user with enhanced validation and offline support"""
+        # Wait for initialization if still in progress
+        if not self._initialization_complete.wait(timeout=5):
+            logger.warning("Initialization still in progress, proceeding anyway")
+
         # Validate inputs
-        user_id = self._validate_user_id(user_id)
-        flag_name = self._validate_flag_name(flag_name)
+        try:
+            user_id = self._validate_user_id(user_id)
+            flag_name = self._validate_flag_name(flag_name)
+        except ValueError as e:
+            logger.error(f"Input validation failed: {e}")
+            return default_value
 
         # Sanitize segments
         if segments:
             clean_segments = {}
             for key, value in segments.items():
                 if isinstance(key, str) and len(key) <= 128:
-                    clean_key = self._validate_string(key, "segment_key", 128)
-                    clean_segments[clean_key] = value
+                    try:
+                        clean_key = self._validate_string(key, "segment_key", 128)
+                        clean_segments[clean_key] = value
+                    except ValueError:
+                        continue
             segments = clean_segments
+
+        # Rate limiting (skip in offline mode)
+        if not self.offline_mode and not self._rate_limit_check(user_id):
+            logger.warning(f"Request blocked due to rate limiting: {user_id}")
+            return default_value
 
         with self._lock:
             flag_data = self.flags.get(flag_name)
@@ -408,7 +663,8 @@ class FeatureFlagsHQSDK:
 
         return result
 
-    def get_bool(self, user_id: str, flag_name: str, default_value: bool = False, segments: Optional[Dict[str, Any]] = None) -> bool:
+    def get_bool(self, user_id: str, flag_name: str, default_value: bool = False,
+                 segments: Optional[Dict[str, Any]] = None) -> bool:
         """Get boolean flag value"""
         value = self.get(user_id, flag_name, default_value, segments)
         if isinstance(value, bool):
@@ -417,12 +673,14 @@ class FeatureFlagsHQSDK:
             return value.lower() in ('true', '1', 'yes')
         return bool(value) if value is not None else default_value
 
-    def get_string(self, user_id: str, flag_name: str, default_value: str = "", segments: Optional[Dict[str, Any]] = None) -> str:
+    def get_string(self, user_id: str, flag_name: str, default_value: str = "",
+                   segments: Optional[Dict[str, Any]] = None) -> str:
         """Get string flag value"""
         value = self.get(user_id, flag_name, default_value, segments)
         return str(value) if value is not None else default_value
 
-    def get_int(self, user_id: str, flag_name: str, default_value: int = 0, segments: Optional[Dict[str, Any]] = None) -> int:
+    def get_int(self, user_id: str, flag_name: str, default_value: int = 0,
+                segments: Optional[Dict[str, Any]] = None) -> int:
         """Get integer flag value"""
         value = self.get(user_id, flag_name, default_value, segments)
         try:
@@ -430,7 +688,8 @@ class FeatureFlagsHQSDK:
         except (ValueError, TypeError):
             return default_value
 
-    def get_float(self, user_id: str, flag_name: str, default_value: float = 0.0, segments: Optional[Dict[str, Any]] = None) -> float:
+    def get_float(self, user_id: str, flag_name: str, default_value: float = 0.0,
+                  segments: Optional[Dict[str, Any]] = None) -> float:
         """Get float flag value"""
         value = self.get(user_id, flag_name, default_value, segments)
         try:
@@ -438,7 +697,8 @@ class FeatureFlagsHQSDK:
         except (ValueError, TypeError):
             return default_value
 
-    def get_json(self, user_id: str, flag_name: str, default_value: Any = None, segments: Optional[Dict[str, Any]] = None) -> Any:
+    def get_json(self, user_id: str, flag_name: str, default_value: Any = None,
+                 segments: Optional[Dict[str, Any]] = None) -> Any:
         """Get JSON flag value"""
         if default_value is None:
             default_value = {}
@@ -455,6 +715,48 @@ class FeatureFlagsHQSDK:
 
         return default_value
 
+    def is_flag_enabled_for_user(self, user_id: str, flag_name: str, segments: Optional[Dict[str, Any]] = None) -> bool:
+        """Check if a feature flag is enabled for a specific user"""
+        return self.get_bool(user_id, flag_name, False, segments)
+
+    def get_user_flags(self, user_id: str, segments: Optional[Dict[str, Any]] = None,
+                       flag_keys: Optional[List[str]] = None) -> Dict[str, Any]:
+        """Get multiple feature flags evaluated for a specific user"""
+        try:
+            user_id = self._validate_user_id(user_id)
+        except ValueError as e:
+            logger.error(f"Invalid user_id: {e}")
+            return {}
+
+        user_flags = {}
+
+        try:
+            with self._lock:
+                flags_to_evaluate = self.flags
+                if flag_keys:
+                    validated_keys = []
+                    for key in flag_keys:
+                        try:
+                            validated_keys.append(self._validate_flag_name(key))
+                        except ValueError:
+                            continue
+                    flags_to_evaluate = {k: v for k, v in self.flags.items() if k in validated_keys}
+        except Exception as e:
+            logger.error(f"Error accessing flags for user flags: {e}")
+            return {}
+
+        for flag_key, flag_data in flags_to_evaluate.items():
+            try:
+                flag_value = self._evaluate_flag(flag_data, user_id, segments)
+                user_flags[flag_key] = flag_value
+            except Exception as e:
+                logger.error(f"Error evaluating flag {flag_key} for user {user_id}: {e}")
+                # Set default based on flag type
+                flag_type = flag_data.get('type', 'string')
+                user_flags[flag_key] = self._get_default_value(flag_type)
+
+        return user_flags
+
     def get_all_flags(self) -> Dict[str, Dict]:
         """Get all cached flags"""
         with self._lock:
@@ -462,11 +764,17 @@ class FeatureFlagsHQSDK:
 
     def refresh_flags(self) -> bool:
         """Manually refresh flags from server"""
+        if self.offline_mode:
+            logger.warning("Cannot refresh flags in offline mode")
+            return False
+
         try:
             new_flags = self._fetch_flags()
             if new_flags:
                 with self._lock:
                     self.flags.update(new_flags)
+                self.stats['last_sync'] = datetime.now(timezone.utc).isoformat()
+                logger.info("Flags manually refreshed")
                 return True
             return False
         except Exception as e:
@@ -475,12 +783,78 @@ class FeatureFlagsHQSDK:
 
     def flush_logs(self) -> bool:
         """Manually flush logs to server"""
+        if self.offline_mode or not self.enable_metrics:
+            logger.warning("Cannot flush logs in offline mode or with metrics disabled")
+            return False
+
         try:
             self._upload_logs()
+            logger.info("Logs manually flushed")
             return True
         except Exception as e:
             logger.error(f"Manual log flush failed: {e}")
             return False
+
+    def get_stats(self) -> Dict:
+        """Get comprehensive SDK usage statistics"""
+        try:
+            with self._stats_lock:
+                return {
+                    'total_user_accesses': self.stats['total_user_accesses'],
+                    'unique_users_count': len(self.stats['unique_users']),
+                    'unique_flags_count': len(self.stats['unique_flags_accessed']),
+                    'last_sync': self.stats['last_sync'],
+                    'last_log_upload': self.stats['last_log_upload'],
+                    'api_calls': self.stats['api_calls'].copy(),
+                    'errors': self.stats['errors'].copy(),
+                    'session_id': self.session_id,
+                    'cached_flags_count': len(self.flags),
+                    'pending_user_logs': self.logs_queue.qsize(),
+                    'circuit_breaker': {
+                        'state': self._circuit_breaker['state'],
+                        'failure_count': self._circuit_breaker['failure_count']
+                    },
+                    'configuration': {
+                        'polling_interval': POLLING_INTERVAL,
+                        'log_upload_interval': LOG_UPLOAD_INTERVAL,
+                        'offline_mode': self.offline_mode,
+                        'enable_metrics': self.enable_metrics,
+                        'environment': self.environment
+                    }
+                }
+        except Exception as e:
+            logger.error(f"Error getting stats: {e}")
+            return {'error': str(e)}
+
+    def get_health_check(self) -> Dict[str, Any]:
+        """Get comprehensive SDK health status"""
+        try:
+            with self._lock:
+                cached_flags_count = len(self.flags)
+
+            return {
+                'status': 'healthy' if self._circuit_breaker['state'] != 'open' else 'degraded',
+                'sdk_version': '2.0.0',
+                'api_base_url': self.api_base_url,
+                'cached_flags_count': cached_flags_count,
+                'session_id': self.session_id,
+                'environment': self.environment,
+                'offline_mode': self.offline_mode,
+                'last_sync': self.stats['last_sync'],
+                'circuit_breaker': {
+                    'state': self._circuit_breaker['state'],
+                    'failure_count': self._circuit_breaker['failure_count']
+                },
+                'system_info': {
+                    'platform': platform.system(),
+                    'python_version': platform.python_version(),
+                    'hostname': platform.node()
+                },
+                'initialization_complete': self._initialization_complete.is_set()
+            }
+        except Exception as e:
+            logger.error(f"Error getting health check: {e}")
+            return {'status': 'error', 'error': str(e)}
 
     def shutdown(self):
         """Shutdown SDK"""
@@ -490,10 +864,11 @@ class FeatureFlagsHQSDK:
         self._stop_event.set()
 
         # Upload remaining logs
-        try:
-            self._upload_logs()
-        except Exception as e:
-            logger.warning(f"Error during final log upload: {e}")
+        if self.enable_metrics and not self.offline_mode:
+            try:
+                self._upload_logs()
+            except Exception as e:
+                logger.warning(f"Error during final log upload: {e}")
 
         # Wait for threads to finish
         for thread in [self._polling_thread, self._log_upload_thread]:
@@ -513,3 +888,54 @@ class FeatureFlagsHQSDK:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.shutdown()
+
+
+# Utility functions for production deployment
+
+def validate_production_config(config: Dict[str, Any]) -> List[str]:
+    """Validate configuration for production deployment"""
+    warnings = []
+
+    if config.get('api_base_url', '').startswith('http://'):
+        warnings.append("Using HTTP instead of HTTPS - security risk")
+
+    if config.get('timeout', 30) < 5:
+        warnings.append("Timeout too low - may cause instability")
+
+    if not config.get('client_secret', ''):
+        warnings.append("Missing client secret")
+
+    client_secret = config.get('client_secret', '')
+    if len(client_secret) < 32:
+        warnings.append("Client secret appears to be weak")
+
+    return warnings
+
+
+def create_production_client(client_id: str, client_secret: str, environment: str, **kwargs) -> FeatureFlagsHQSDK:
+    """Create a production-ready SDK instance with security hardening"""
+
+    secure_config = {
+        'timeout': 30,
+        'max_retries': 3,
+        'offline_mode': False,
+        'enable_metrics': True,
+        **kwargs
+    }
+
+    # Validate configuration
+    warnings = validate_production_config(secure_config)
+    if warnings:
+        for warning in warnings:
+            logger.warning(f"Configuration warning: {warning}")
+
+    # Create SDK instance
+    sdk = FeatureFlagsHQSDK(
+        client_id=client_id,
+        client_secret=client_secret,
+        environment=environment,
+        **secure_config
+    )
+
+    logger.info("Secure FeatureFlagsHQ SDK initialized with production configuration")
+    return sdk
