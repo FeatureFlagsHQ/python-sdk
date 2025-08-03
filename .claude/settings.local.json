@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m pytest tests/test_sdk.py::TestFeatureFlagsHQSDK::test_rate_limiting -v)",
+      "Bash(python -m pytest tests/test_sdk.py -v)"
+    ],
+    "deny": []
+  }
+}

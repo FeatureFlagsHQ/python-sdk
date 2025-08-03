@@ -248,7 +248,7 @@ class TestFeatureFlagsHQSDK(unittest.TestCase):
             sdk = FeatureFlagsHQSDK(
                 client_id=self.client_id,
                 client_secret=self.client_secret,
-                offline_mode=True
+                offline_mode=False  # Rate limiting only works when not in offline mode
             )
 
             user_id = "test_user"
