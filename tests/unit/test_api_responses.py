@@ -37,7 +37,7 @@ class TestAPIResponseHandling:
         """Test successful flags API response"""
         responses.add(
             responses.GET,
-            'https://api.featureflagshq.com/api/v1/flags/',
+            'https://api.featureflagshq.com/v1/flags/',
             json={
                 "data": [
                     {
@@ -70,7 +70,7 @@ class TestAPIResponseHandling:
         """Test handling of malformed JSON response"""
         responses.add(
             responses.GET,
-            'https://api.featureflagshq.com/api/v1/flags/',
+            'https://api.featureflagshq.com/v1/flags/',
             body="invalid json{",
             status=200
         )
@@ -87,7 +87,7 @@ class TestAPIResponseHandling:
         """Test response without data field"""
         responses.add(
             responses.GET,
-            'https://api.featureflagshq.com/api/v1/flags/',
+            'https://api.featureflagshq.com/v1/flags/',
             json={"environment": {"name": "test"}},  # Missing 'data' field
             status=200
         )
@@ -105,7 +105,7 @@ class TestAPIResponseHandling:
         """Test response with invalid flag data"""
         responses.add(
             responses.GET,
-            'https://api.featureflagshq.com/api/v1/flags/',
+            'https://api.featureflagshq.com/v1/flags/',
             json={
                 "data": [
                     {
@@ -152,7 +152,7 @@ class TestAPIResponseHandling:
         """Test empty API response"""
         responses.add(
             responses.GET,
-            'https://api.featureflagshq.com/api/v1/flags/',
+            'https://api.featureflagshq.com/v1/flags/',
             json={"data": []},
             status=200
         )
@@ -168,7 +168,7 @@ class TestAPIResponseHandling:
         """Test 401 unauthorized response"""
         responses.add(
             responses.GET,
-            'https://api.featureflagshq.com/api/v1/flags/',
+            'https://api.featureflagshq.com/v1/flags/',
             json={"error": "Unauthorized"},
             status=401
         )
@@ -184,7 +184,7 @@ class TestAPIResponseHandling:
         """Test 500 server error response"""
         responses.add(
             responses.GET,
-            'https://api.featureflagshq.com/api/v1/flags/',
+            'https://api.featureflagshq.com/v1/flags/',
             json={"error": "Internal server error"},
             status=500
         )
@@ -202,7 +202,7 @@ class TestAPIResponseHandling:
         """Test flag data with optional fields missing"""
         responses.add(
             responses.GET,
-            'https://api.featureflagshq.com/api/v1/flags/',
+            'https://api.featureflagshq.com/v1/flags/',
             json={
                 "data": [
                     {
@@ -245,7 +245,7 @@ class TestLogUploadResponses:
         """Test successful log upload"""
         responses.add(
             responses.POST,
-            'https://api.featureflagshq.com/api/v1/logs/batch/',
+            'https://api.featureflagshq.com/v1/logs/batch/',
             json={"status": "success", "processed": 5},
             status=200
         )
@@ -281,7 +281,7 @@ class TestLogUploadResponses:
         """Test log upload failure and retry behavior"""
         responses.add(
             responses.POST,
-            'https://api.featureflagshq.com/api/v1/logs/batch/',
+            'https://api.featureflagshq.com/v1/logs/batch/',
             json={"error": "Server error"},
             status=500
         )

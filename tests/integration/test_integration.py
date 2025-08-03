@@ -34,7 +34,7 @@ class TestCompleteWorkflows:
         # Mock API responses
         responses.add(
             responses.GET,
-            'https://api.featureflagshq.com/api/v1/flags/',
+            'https://api.featureflagshq.com/v1/flags/',
             json={
                 "data": [
                     {
@@ -64,7 +64,7 @@ class TestCompleteWorkflows:
 
         responses.add(
             responses.POST,
-            'https://api.featureflagshq.com/api/v1/logs/batch/',
+            'https://api.featureflagshq.com/v1/logs/batch/',
             json={"status": "success"},
             status=200
         )
@@ -197,7 +197,7 @@ class TestCompleteWorkflows:
         # Initially return error
         responses.add(
             responses.GET,
-            'https://api.featureflagshq.com/api/v1/flags/',
+            'https://api.featureflagshq.com/v1/flags/',
             json={"error": "Server error"},
             status=500
         )
@@ -220,7 +220,7 @@ class TestCompleteWorkflows:
             responses.reset()
             responses.add(
                 responses.GET,
-                'https://api.featureflagshq.com/api/v1/flags/',
+                'https://api.featureflagshq.com/v1/flags/',
                 json={
                     "data": [
                         {

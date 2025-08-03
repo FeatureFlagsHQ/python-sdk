@@ -14,7 +14,7 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 from queue import Queue, Empty
 from typing import Any, Dict, Optional, List, Callable
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urlparse
 
 import psutil
 import requests
@@ -516,8 +516,9 @@ class FeatureFlagsHQSDK:
         """Check if circuit breaker allows API calls"""
         if self._circuit_breaker['state'] == 'open':
             # If last_failure_time is None, circuit breaker should remain open
-            if (self._circuit_breaker['last_failure_time'] is not None and 
-                (time.time() - self._circuit_breaker['last_failure_time']) > self._circuit_breaker['recovery_timeout']):
+            if (self._circuit_breaker['last_failure_time'] is not None and
+                    (time.time() - self._circuit_breaker['last_failure_time']) > self._circuit_breaker[
+                        'recovery_timeout']):
                 self._circuit_breaker['state'] = 'half-open'
                 logger.info("FeatureFlagsHQ: Circuit breaker moved to half-open state")
                 return True
@@ -555,7 +556,7 @@ class FeatureFlagsHQSDK:
             logger.debug("FeatureFlagsHQ: API call blocked by circuit breaker")
             return {}
 
-        flags_url = urljoin(self.api_base_url, "/api/v1/flags/")
+        flags_url = f"{self.api_base_url.rstrip('/')}/v1/flags/"
 
         try:
             headers = self._get_headers("")
@@ -692,7 +693,7 @@ class FeatureFlagsHQSDK:
         if not logs_batch:
             return
 
-        upload_url = urljoin(self.api_base_url, "/api/v1/logs/batch/")
+        upload_url = f"{self.api_base_url.rstrip('/')}/v1/logs/batch/"
         payload = {
             'logs': logs_batch,
             'session_metadata': {
@@ -973,7 +974,7 @@ class FeatureFlagsHQSDK:
                         return float(flag.value) if flag.value is not None else float(default_value)
                     except (ValueError, TypeError):
                         return float(default_value)
-            
+
             return float(value) if value is not None else float(default_value)
         except (ValueError, TypeError):
             return float(default_value)
@@ -985,7 +986,7 @@ class FeatureFlagsHQSDK:
             default_value = {}
 
         value = self.get(user_id, flag_key, default_value, segments)
-        
+
         # Check if value is the typed default ({}) and user provided a different default
         if isinstance(value, dict) and value == {} and default_value != {}:
             # Get the flag to check its raw value
@@ -999,18 +1000,18 @@ class FeatureFlagsHQSDK:
                     return flag.value
                 except (json.JSONDecodeError, AttributeError):
                     return default_value
-        
+
         # Handle already parsed values
         if not isinstance(value, str):
             return value
-            
+
         # Parse string values
         if isinstance(value, str):
             try:
                 return json.loads(value)
             except json.JSONDecodeError:
                 return default_value
-                
+
         return default_value
 
     def is_flag_enabled_for_user(self, user_id: str, flag_key: str, segments: Optional[Dict[str, Any]] = None) -> bool:

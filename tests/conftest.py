@@ -124,7 +124,7 @@ def online_client_with_mocks(mock_client_credentials, mock_api_response, mock_re
     # Mock the flags endpoint
     mock_responses.add(
         responses.GET,
-        'https://api.featureflagshq.com/api/v1/flags/',
+        'https://api.featureflagshq.com/v1/flags/',
         json=mock_api_response,
         status=200
     )
@@ -132,7 +132,7 @@ def online_client_with_mocks(mock_client_credentials, mock_api_response, mock_re
     # Mock the logs endpoint
     mock_responses.add(
         responses.POST,
-        'https://api.featureflagshq.com/api/v1/logs/batch/',
+        'https://api.featureflagshq.com/v1/logs/batch/',
         json={'status': 'success'},
         status=200
     )
