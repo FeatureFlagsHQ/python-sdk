@@ -18,7 +18,7 @@ DJANGO_SETTINGS_EXAMPLE = """
 FEATUREFLAGSHQ_CLIENT_ID = os.getenv('FEATUREFLAGSHQ_CLIENT_ID')
 FEATUREFLAGSHQ_CLIENT_SECRET = os.getenv('FEATUREFLAGSHQ_CLIENT_SECRET')
 FEATUREFLAGSHQ_ENVIRONMENT = os.getenv('FEATUREFLAGSHQ_ENVIRONMENT', 'production')
-FEATUREFLAGSHQ_API_BASE_URL = 'https://api.featureflagshq.com'
+FEATUREFLAGSHQ_API_BASE_URL = DEFAULT_API_BASE_URL
 FEATUREFLAGSHQ_TIMEOUT = 30
 FEATUREFLAGSHQ_ENABLE_METRICS = True
 
@@ -37,7 +37,7 @@ FEATURE_FLAGS_SERVICE = """
 # myapp/services/feature_flags.py
 
 from django.conf import settings
-from featureflagshq import FeatureFlagsHQSDK, create_production_client
+from featureflagshq import FeatureFlagsHQSDK, create_production_client, DEFAULT_API_BASE_URL
 import logging
 
 logger = logging.getLogger(__name__)
@@ -65,7 +65,7 @@ class FeatureFlagService:
                     client_id=settings.FEATUREFLAGSHQ_CLIENT_ID,
                     client_secret=settings.FEATUREFLAGSHQ_CLIENT_SECRET,
                     environment=getattr(settings, 'FEATUREFLAGSHQ_ENVIRONMENT', 'production'),
-                    api_base_url=getattr(settings, 'FEATUREFLAGSHQ_API_BASE_URL', 'https://api.featureflagshq.com'),
+                    api_base_url=getattr(settings, 'FEATUREFLAGSHQ_API_BASE_URL', DEFAULT_API_BASE_URL),
                     timeout=getattr(settings, 'FEATUREFLAGSHQ_TIMEOUT', 30),
                     enable_metrics=getattr(settings, 'FEATUREFLAGSHQ_ENABLE_METRICS', True)
                 )
@@ -669,16 +669,17 @@ class FeatureFlagMiddlewareTests(TestCase):
         self.assertTrue(hasattr(request, 'user_id'))
 """
 
+
 # =============================================================================
 # Main Example Runner
 # =============================================================================
 
 def print_integration_guide():
     """Print the complete Django integration guide"""
-    
+
     print("FeatureFlagsHQ SDK - Django Integration Guide")
     print("=" * 60)
-    
+
     sections = [
         ("Django Settings Configuration", DJANGO_SETTINGS_EXAMPLE),
         ("Feature Flags Service", FEATURE_FLAGS_SERVICE),
@@ -692,16 +693,17 @@ def print_integration_guide():
         ("Template Examples", TEMPLATE_EXAMPLES),
         ("Testing Examples", TESTING_EXAMPLES),
     ]
-    
+
     for title, content in sections:
         print(f"\n{'=' * 20}")
         print(f"{title}")
         print(f"{'=' * 20}")
         print(content)
 
+
 def create_django_project_structure():
     """Instructions for setting up Django project structure"""
-    
+
     structure = """
 Django Project Structure:
 ========================
@@ -826,8 +828,9 @@ fetch('/api/user-flags/')
         }
     });
 """
-    
+
     print(structure)
+
 
 if __name__ == "__main__":
     print_integration_guide()

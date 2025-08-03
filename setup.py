@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 
-from setuptools import setup, find_packages
 import os
+
+from setuptools import setup, find_packages
 
 # Read the contents of README file
 this_directory = os.path.abspath(os.path.dirname(__file__))
@@ -12,9 +13,18 @@ with open(os.path.join(this_directory, 'README.md'), encoding='utf-8') as f:
 with open(os.path.join(this_directory, 'requirements.txt'), encoding='utf-8') as f:
     requirements = [line.strip() for line in f if line.strip() and not line.startswith('#')]
 
+
+# Get version from package
+def get_version():
+    import sys
+    sys.path.insert(0, os.path.join(this_directory, 'featureflagshq'))
+    from featureflagshq.__init__ import __version__
+    return __version__
+
+
 setup(
     name="featureflagshq-sdk",
-    version="1.0.0",
+    version=get_version(),
     author="FeatureFlagsHQ",
     author_email="hello@featureflagshq.com",
     description="A secure, high-performance Python SDK for FeatureFlagsHQ feature flag management",

@@ -22,6 +22,15 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
+# Import SDK constants
+try:
+    from . import SDK_VERSION, DEFAULT_API_BASE_URL, USER_AGENT_PREFIX
+except ImportError:
+    # Fallback for direct execution
+    SDK_VERSION = "1.0.0"
+    DEFAULT_API_BASE_URL = "https://api.featureflagshq.com"
+    USER_AGENT_PREFIX = "FeatureFlagsHQ-Python-SDK"
+
 # Constants
 MAX_USER_ID_LENGTH = 255
 MAX_FLAG_NAME_LENGTH = 255
@@ -61,7 +70,7 @@ class FeatureFlagsHQSDK:
     """Enhanced Feature Flag SDK with security and missing features"""
 
     def __init__(self, client_id: str = None, client_secret: str = None,
-                 api_base_url: str = "https://api.featureflagshq.com",
+                 api_base_url: str = DEFAULT_API_BASE_URL,
                  environment: str = None, timeout: int = 30, max_retries: int = 3,
                  offline_mode: bool = False, enable_metrics: bool = True,
                  on_flag_change: Optional[Callable[[str, Any, Any], None]] = None):
@@ -310,9 +319,9 @@ class FeatureFlagsHQSDK:
             'X-Timestamp': timestamp,
             'X-Signature': signature,
             'X-Session-ID': self.session_id,
-            'X-SDK-Version': '1.0.0',
+            'X-SDK-Version': SDK_VERSION,
             'X-Environment': self.environment,
-            'User-Agent': 'FeatureFlagsHQ-Python-SDK/1.0.0'
+            'User-Agent': f'{USER_AGENT_PREFIX}/{SDK_VERSION}'
         }
 
     def _fetch_flags(self) -> Dict[str, Any]:
@@ -834,7 +843,7 @@ class FeatureFlagsHQSDK:
 
             return {
                 'status': 'healthy' if self._circuit_breaker['state'] != 'open' else 'degraded',
-                'sdk_version': '1.0.0',
+                'sdk_version': SDK_VERSION,
                 'api_base_url': self.api_base_url,
                 'cached_flags_count': cached_flags_count,
                 'session_id': self.session_id,
