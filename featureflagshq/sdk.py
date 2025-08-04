@@ -667,40 +667,71 @@ class FeatureFlagsHQSDK:
 
     def _polling_worker(self):
         """Background worker to poll for flag updates with change detection"""
-        while not self._stop_event.wait(POLLING_INTERVAL):
-            try:
-                old_flags = dict(self.flags) if self.on_flag_change else {}
-                new_flags = self._fetch_flags()
+        logger.debug("Polling worker started")
+        try:
+            # Check if we should stop immediately (for manual calls in tests)
+            if self._stop_event.is_set():
+                logger.debug("Stop event already set, exiting polling worker")
+                return
 
-                if new_flags:
-                    with self._lock:
-                        # Detect changes for callbacks
-                        if self.on_flag_change:
-                            for flag_name, new_flag_data in new_flags.items():
-                                old_flag_data = old_flags.get(flag_name)
-                                old_value = old_flag_data.get('value') if old_flag_data else None
-                                new_value = new_flag_data.get('value')
+            # Use shorter intervals for faster shutdown response
+            poll_interval = min(POLLING_INTERVAL, 10)  # Max 10 seconds for testing
+            while not self._stop_event.wait(poll_interval):
+                # Check if we should stop before doing any work 
+                if self._stop_event.is_set():
+                    break
 
-                                if old_value != new_value:
-                                    try:
-                                        self.on_flag_change(flag_name, old_value, new_value)
-                                    except Exception as e:
-                                        logger.error(f"Error in flag change callback: {e}")
+                try:
+                    old_flags = dict(self.flags) if self.on_flag_change else {}
+                    new_flags = self._fetch_flags()
 
-                        self.flags.update(new_flags)
+                    if new_flags:
+                        with self._lock:
+                            # Detect changes for callbacks
+                            if self.on_flag_change:
+                                for flag_name, new_flag_data in new_flags.items():
+                                    old_flag_data = old_flags.get(flag_name)
+                                    old_value = old_flag_data.get('value') if old_flag_data else None
+                                    new_value = new_flag_data.get('value')
 
-                    self.stats['last_sync'] = datetime.now(timezone.utc).isoformat()
-                    logger.debug("Updated flags from polling")
-            except Exception as e:
-                logger.error(f"Error in polling worker: {e}")
+                                    if old_value != new_value:
+                                        try:
+                                            self.on_flag_change(flag_name, old_value, new_value)
+                                        except Exception as e:
+                                            logger.error(f"Error in flag change callback: {e}")
+
+                            self.flags.update(new_flags)
+
+                        self.stats['last_sync'] = datetime.now(timezone.utc).isoformat()
+                        logger.debug("Updated flags from polling")
+                except Exception as e:
+                    logger.error(f"Error in polling worker: {e}")
+                    # Don't break the loop, continue with next iteration
+        except Exception as e:
+            logger.error(f"Fatal error in polling worker: {e}")
+        finally:
+            logger.debug("Polling worker stopped")
 
     def _log_upload_worker(self):
         """Background worker to upload logs"""
-        while not self._stop_event.wait(LOG_UPLOAD_INTERVAL):
-            try:
-                self._upload_logs()
-            except Exception as e:
-                logger.error(f"Error in log upload worker: {e}")
+        logger.debug("Log upload worker started")
+        try:
+            # Use shorter intervals for faster shutdown response
+            upload_interval = min(LOG_UPLOAD_INTERVAL, 5)  # Max 5 seconds for testing
+            while not self._stop_event.wait(upload_interval):
+                # Check if we should stop before doing any work
+                if self._stop_event.is_set():
+                    break
+
+                try:
+                    self._upload_logs()
+                except Exception as e:
+                    logger.error(f"Error in log upload worker: {e}")
+                    # Don't break the loop, continue with next iteration
+        except Exception as e:
+            logger.error(f"Fatal error in log upload worker: {e}")
+        finally:
+            logger.debug("Log upload worker stopped")
 
     def _initialize(self):
         """Initialize SDK"""
@@ -1012,16 +1043,27 @@ class FeatureFlagsHQSDK:
             except Exception as e:
                 logger.warning(f"Error during final log upload: {e}")
 
-        # Wait for threads to finish
-        for thread in [self._polling_thread, self._log_upload_thread]:
+        # Wait for threads to finish with better cleanup
+        threads_to_join = [self._polling_thread, self._log_upload_thread]
+        for thread in threads_to_join:
             if thread and thread.is_alive():
-                thread.join(timeout=2)
+                try:
+                    thread.join(timeout=5)  # Increased timeout
+                    if thread.is_alive():
+                        logger.warning(f"Thread {thread.name} did not terminate within timeout")
+                except Exception as e:
+                    logger.warning(f"Error joining thread {thread.name}: {e}")
 
         # Close session
         try:
-            self.session.close()
+            if hasattr(self, 'session') and self.session:
+                self.session.close()
         except Exception as e:
             logger.warning(f"Error closing session: {e}")
+
+        # Clear references to prevent memory leaks
+        self._polling_thread = None
+        self._log_upload_thread = None
 
         logger.info("SDK shutdown complete")
 
