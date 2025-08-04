@@ -14,12 +14,20 @@ with open(os.path.join(this_directory, 'requirements.txt'), encoding='utf-8') as
     requirements = [line.strip() for line in f if line.strip() and not line.startswith('#')]
 
 
-# Get version and constants from package
+# Get version and constants directly
 def get_package_info():
-    import sys
-    sys.path.insert(0, os.path.join(this_directory, 'featureflagshq'))
-    from featureflagshq.__init__ import __version__, COMPANY_NAME
-    return __version__, COMPANY_NAME
+    version_file = os.path.join(this_directory, 'featureflagshq', '__init__.py')
+    version = None
+    company_name = None
+
+    with open(version_file, 'r', encoding='utf-8') as f:
+        for line in f:
+            if line.startswith('__version__'):
+                version = line.split('=')[1].strip().strip('"\'')
+            elif line.startswith('COMPANY_NAME'):
+                company_name = line.split('=')[1].strip().strip('"\'')
+
+    return version, company_name
 
 
 version, company_name = get_package_info()

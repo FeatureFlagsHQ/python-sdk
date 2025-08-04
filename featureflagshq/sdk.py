@@ -1,5 +1,5 @@
 """
-FeatureFlagsHQ SDK - Core functionality
+FeatureFlagsHQ SDK - Core functionality with Enhanced Logging
 """
 
 import base64
@@ -107,7 +107,7 @@ class FeatureFlagsHQSDK:
         self._stop_event = threading.Event()
         self._initialization_complete = threading.Event()
 
-        # Enhanced statistics
+        # Enhanced statistics for session metadata
         self.stats = {
             'total_user_accesses': 0,
             'unique_users': set(),
@@ -115,7 +115,10 @@ class FeatureFlagsHQSDK:
             'last_sync': None,
             'last_log_upload': None,
             'api_calls': {'successful': 0, 'failed': 0, 'total': 0},
-            'errors': {'network_errors': 0, 'auth_errors': 0, 'other_errors': 0}
+            'errors': {'network_errors': 0, 'auth_errors': 0, 'other_errors': 0},
+            'segment_matches': 0,
+            'rollout_evaluations': 0,
+            'evaluation_times': {'total_ms': 0, 'count': 0, 'min_ms': float('inf'), 'max_ms': 0}
         }
 
         # Circuit breaker for API calls
@@ -149,12 +152,33 @@ class FeatureFlagsHQSDK:
         self.session.mount("http://", adapter)
         self.session.mount("https://", adapter)
 
+        # System info for session metadata
+        self._system_info = self._get_system_info()
+
         # Start SDK
         self._initialize()
 
+    def _get_system_info(self) -> Dict[str, Any]:
+        """Get system information for session metadata"""
+        try:
+            import psutil
+            memory_total = psutil.virtual_memory().total
+            cpu_count = psutil.cpu_count()
+        except ImportError:
+            memory_total = None
+            cpu_count = os.cpu_count()
+
+        return {
+            'platform': platform.system(),
+            'python_version': platform.python_version(),
+            'hostname': platform.node(),
+            'process_id': os.getpid(),
+            'cpu_count': cpu_count,
+            'memory_total': memory_total
+        }
+
     def _validate_url(self, url: str) -> str:
         """Validate and sanitize URL"""
-
         if not url or not isinstance(url, str):
             raise ValueError("API base URL must be a non-empty string")
 
@@ -370,46 +394,103 @@ class FeatureFlagsHQSDK:
             logger.error(f"Failed to fetch flags: {e}")
             return {}
 
-    def _evaluate_flag(self, flag_data: Dict[str, Any], user_id: str, segments: Optional[Dict[str, Any]] = None) -> Any:
-        """Evaluate flag for user"""
+    def _evaluate_flag(self, flag_data: Dict[str, Any], user_id: str,
+                       segments: Optional[Dict[str, Any]] = None) -> tuple:
+        """Evaluate flag for user and return (value, evaluation_context)"""
+        start_time = time.time()
+
+        evaluation_context = {
+            'flag_active': flag_data.get('is_active', True),
+            'flag_found': True,
+            'default_value_used': False,
+            'segments_matched': [],
+            'segments_evaluated': [],
+            'rollout_qualified': False,
+            'reason': 'active_flag'
+        }
+
         if not flag_data.get('is_active', True):
-            return self._get_default_value(flag_data.get('type', 'string'))
+            evaluation_context['default_value_used'] = True
+            evaluation_context['reason'] = 'flag_inactive'
+            value = self._get_default_value(flag_data.get('type', 'string'))
+            evaluation_time = (time.time() - start_time) * 1000
+            evaluation_context['total_sdk_time_ms'] = evaluation_time
+            return value, evaluation_context
 
         # Check segments if provided
         if segments and flag_data.get('segments'):
-            segment_match = self._check_segments(flag_data['segments'], segments)
-            if not segment_match:
-                return self._get_default_value(flag_data.get('type', 'string'))
+            segments_matched = []
+            segments_evaluated = []
+
+            for segment in flag_data['segments']:
+                segment_name = segment.get('name', '')
+                segments_evaluated.append(segment_name)
+
+                if self._check_segment_match(segment, segments):
+                    segments_matched.append(segment_name)
+
+            evaluation_context['segments_matched'] = segments_matched
+            evaluation_context['segments_evaluated'] = segments_evaluated
+
+            # Update stats
+            with self._stats_lock:
+                self.stats['segment_matches'] += len(segments_matched)
+
+            # If segments exist but none matched, return default
+            if flag_data.get('segments') and not segments_matched:
+                evaluation_context['default_value_used'] = True
+                evaluation_context['reason'] = 'segment_not_matched'
+                value = self._get_default_value(flag_data.get('type', 'string'))
+                evaluation_time = (time.time() - start_time) * 1000
+                evaluation_context['total_sdk_time_ms'] = evaluation_time
+                return value, evaluation_context
 
         # Check rollout percentage
         rollout_percentage = flag_data.get('rollout', {}).get('percentage', 100)
         if rollout_percentage < 100:
+            with self._stats_lock:
+                self.stats['rollout_evaluations'] += 1
+
             user_hash = hashlib.sha256(f"{flag_data['name']}:{user_id}".encode()).hexdigest()
             user_percentage = int(user_hash[:8], 16) % 100
-            if user_percentage >= rollout_percentage:
-                return self._get_default_value(flag_data.get('type', 'string'))
+
+            if user_percentage < rollout_percentage:
+                evaluation_context['rollout_qualified'] = True
+                evaluation_context['reason'] = 'rollout_qualified'
+            else:
+                evaluation_context['default_value_used'] = True
+                evaluation_context['reason'] = 'rollout_not_qualified'
+                value = self._get_default_value(flag_data.get('type', 'string'))
+                evaluation_time = (time.time() - start_time) * 1000
+                evaluation_context['total_sdk_time_ms'] = evaluation_time
+                return value, evaluation_context
 
         # Return flag value
-        return self._convert_value(flag_data.get('value'), flag_data.get('type', 'string'))
+        value = self._convert_value(flag_data.get('value'), flag_data.get('type', 'string'))
+        evaluation_time = (time.time() - start_time) * 1000
+        evaluation_context['total_sdk_time_ms'] = evaluation_time
 
-    def _check_segments(self, flag_segments: List[Dict], user_segments: Dict[str, Any]) -> bool:
-        """Check if user matches any segment"""
-        for segment in flag_segments:
-            if not isinstance(segment, dict):
-                continue
+        # Update evaluation time stats
+        with self._stats_lock:
+            eval_times = self.stats['evaluation_times']
+            eval_times['total_ms'] += evaluation_time
+            eval_times['count'] += 1
+            eval_times['min_ms'] = min(eval_times['min_ms'], evaluation_time)
+            eval_times['max_ms'] = max(eval_times['max_ms'], evaluation_time)
 
-            segment_name = segment.get('name')
-            if segment_name in user_segments:
-                if self._evaluate_segment(segment, user_segments[segment_name]):
-                    return True
-        return False
+        return value, evaluation_context
 
-    def _evaluate_segment(self, segment: Dict, user_value: Any) -> bool:
-        """Evaluate single segment condition"""
+    def _check_segment_match(self, segment: Dict, segments: Dict[str, Any]) -> bool:
+        """Check if segment matches user attributes"""
         try:
+            segment_name = segment.get('name')
+            if not segment_name or segment_name not in segments:
+                return False
+
             comparator = segment.get('comparator', '==')
             segment_value = segment.get('value')
             segment_type = segment.get('type', 'string')
+            user_value = segments[segment_name]
 
             # Convert values to same type
             if segment_type == 'int':
@@ -477,8 +558,9 @@ class FeatureFlagsHQSDK:
         }
         return defaults.get(value_type, '')
 
-    def _log_access(self, user_id: str, flag_name: str, flag_value: Any, segments: Optional[Dict] = None):
-        """Log flag access for analytics"""
+    def _log_access(self, user_id: str, flag_name: str, flag_value: Any, evaluation_context: Dict,
+                    evaluation_time_ms: float, segments: Optional[Dict] = None):
+        """Log flag access for analytics with enhanced structure"""
         if not self.enable_metrics:
             return
 
@@ -486,14 +568,14 @@ class FeatureFlagsHQSDK:
             'user_id': user_id,
             'flag_name': flag_name,
             'flag_value': flag_value,
-            'segments': segments or {},
             'timestamp': datetime.now(timezone.utc).isoformat(),
             'session_id': self.session_id,
-            'system_info': {
-                'platform': platform.system(),
-                'python_version': platform.python_version(),
-                'hostname': platform.node(),
-                'process_id': os.getpid()
+            'evaluation_time_ms': evaluation_time_ms,
+            'evaluation_context': evaluation_context,
+            'segments': segments or {},
+            'metadata': {
+                'sdk_version': SDK_VERSION,
+                'environment': self.environment
             }
         }
 
@@ -513,8 +595,36 @@ class FeatureFlagsHQSDK:
         if self.stats['total_user_accesses'] % 1000 == 0:
             self._cleanup_old_stats()
 
+    def _get_session_metadata(self) -> Dict[str, Any]:
+        """Get session metadata for log uploads"""
+        with self._stats_lock:
+            eval_times = self.stats['evaluation_times']
+            avg_ms = (eval_times['total_ms'] / eval_times['count']) if eval_times['count'] > 0 else 0
+
+            return {
+                'session_id': self.session_id,
+                'environment': {
+                    'name': self.environment
+                },
+                'system_info': self._system_info,
+                'stats': {
+                    'total_user_accesses': self.stats['total_user_accesses'],
+                    'unique_users_count': len(self.stats['unique_users']),
+                    'unique_flags_count': len(self.stats['unique_flags_accessed']),
+                    'segment_matches': self.stats['segment_matches'],
+                    'rollout_evaluations': self.stats['rollout_evaluations'],
+                    'evaluation_times': {
+                        'avg_ms': avg_ms,
+                        'min_ms': eval_times['min_ms'] if eval_times['min_ms'] != float('inf') else 0,
+                        'max_ms': eval_times['max_ms'],
+                        'total_ms': eval_times['total_ms'],
+                        'count': eval_times['count']
+                    }
+                }
+            }
+
     def _upload_logs(self):
-        """Upload logs to server"""
+        """Upload logs to server with session metadata"""
         if self.offline_mode or self.logs_queue.empty() or not self._check_circuit_breaker():
             return
 
@@ -530,7 +640,10 @@ class FeatureFlagsHQSDK:
 
         try:
             url = f"{self.api_base_url}/v1/logs/batch/"
-            payload = {'logs': logs}
+            payload = {
+                'logs': logs,
+                'session_metadata': self._get_session_metadata()
+            }
             payload_str = json.dumps(payload)
             headers = self._get_headers(payload_str)
 
@@ -660,16 +773,23 @@ class FeatureFlagsHQSDK:
         if not flag_data:
             # Flag not found, return default
             result = default_value
+            evaluation_context = {
+                'flag_found': False,
+                'default_value_used': True,
+                'reason': 'flag_not_found'
+            }
+            evaluation_time_ms = 0
         else:
             # Evaluate flag
-            result = self._evaluate_flag(flag_data, user_id, segments)
+            result, evaluation_context = self._evaluate_flag(flag_data, user_id, segments)
+            evaluation_time_ms = evaluation_context.get('total_sdk_time_ms', 0)
 
             # Use custom default if evaluation returned default and custom default provided
-            if result == self._get_default_value(flag_data.get('type', 'string')) and default_value is not None:
+            if evaluation_context.get('default_value_used') and default_value is not None:
                 result = default_value
 
         # Log the access
-        self._log_access(user_id, flag_name, result, segments)
+        self._log_access(user_id, flag_name, result, evaluation_context, evaluation_time_ms, segments)
 
         return result
 
@@ -757,8 +877,12 @@ class FeatureFlagsHQSDK:
 
         for flag_key, flag_data in flags_to_evaluate.items():
             try:
-                flag_value = self._evaluate_flag(flag_data, user_id, segments)
+                flag_value, evaluation_context = self._evaluate_flag(flag_data, user_id, segments)
                 user_flags[flag_key] = flag_value
+
+                # Log each flag access
+                evaluation_time_ms = evaluation_context.get('total_sdk_time_ms', 0)
+                self._log_access(user_id, flag_key, flag_value, evaluation_context, evaluation_time_ms, segments)
             except Exception as e:
                 logger.error(f"Error evaluating flag {flag_key} for user {user_id}: {e}")
                 # Set default based on flag type
@@ -809,10 +933,15 @@ class FeatureFlagsHQSDK:
         """Get comprehensive SDK usage statistics"""
         try:
             with self._stats_lock:
+                eval_times = self.stats['evaluation_times']
+                avg_ms = (eval_times['total_ms'] / eval_times['count']) if eval_times['count'] > 0 else 0
+
                 return {
                     'total_user_accesses': self.stats['total_user_accesses'],
                     'unique_users_count': len(self.stats['unique_users']),
                     'unique_flags_count': len(self.stats['unique_flags_accessed']),
+                    'segment_matches': self.stats['segment_matches'],
+                    'rollout_evaluations': self.stats['rollout_evaluations'],
                     'last_sync': self.stats['last_sync'],
                     'last_log_upload': self.stats['last_log_upload'],
                     'api_calls': self.stats['api_calls'].copy(),
@@ -823,6 +952,13 @@ class FeatureFlagsHQSDK:
                     'circuit_breaker': {
                         'state': self._circuit_breaker['state'],
                         'failure_count': self._circuit_breaker['failure_count']
+                    },
+                    'evaluation_times': {
+                        'avg_ms': avg_ms,
+                        'min_ms': eval_times['min_ms'] if eval_times['min_ms'] != float('inf') else 0,
+                        'max_ms': eval_times['max_ms'],
+                        'total_ms': eval_times['total_ms'],
+                        'count': eval_times['count']
                     },
                     'configuration': {
                         'polling_interval': POLLING_INTERVAL,
@@ -855,11 +991,7 @@ class FeatureFlagsHQSDK:
                     'state': self._circuit_breaker['state'],
                     'failure_count': self._circuit_breaker['failure_count']
                 },
-                'system_info': {
-                    'platform': platform.system(),
-                    'python_version': platform.python_version(),
-                    'hostname': platform.node()
-                },
+                'system_info': self._system_info,
                 'initialization_complete': self._initialization_complete.is_set()
             }
         except Exception as e:
