@@ -5,7 +5,7 @@
 1. **Clone and setup the project:**
 ```bash
 git clone <your-repo-url>
-cd featureflagshq-sdk
+cd featureflagshq
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -e .[dev]
@@ -111,7 +111,7 @@ pip install dist/featureflagshq_sdk-2.0.1-py3-none-any.whl
 twine upload --repository testpypi dist/*
 
 # Install from TestPyPI to test
-pip install --index-url https://test.pypi.org/simple/ featureflagshq-sdk
+pip install --index-url https://test.pypi.org/simple/ featureflagshq
 ```
 
 ### 2. Publish to PyPI
@@ -126,7 +126,7 @@ twine upload --repository pypi dist/*
 ### 3. Verify Publication
 ```bash
 # Install from PyPI
-pip install featureflagshq-sdk
+pip install featureflagshq
 
 # Check version
 python -c "import featureflagshq; print(featureflagshq.__version__)"
@@ -222,7 +222,7 @@ jobs:
 
 ### Post-Release
 - [ ] Verify PyPI listing
-- [ ] Test installation: `pip install featureflagshq-sdk`
+- [ ] Test installation: `pip install featureflagshq`
 - [ ] Update examples if needed
 - [ ] Monitor for issues
 
@@ -260,26 +260,26 @@ python -c "import featureflagshq; print(dir(featureflagshq))"
 # Test in clean environment
 python -m venv test_env
 source test_env/bin/activate
-pip install featureflagshq-sdk
+pip install featureflagshq
 python -c "from featureflagshq import FeatureFlagsHQSDK"
 ```
 
 ### 4. Version Conflicts
 ```bash
 # Check current version
-pip show featureflagshq-sdk
+pip show featureflagshq
 
 # Force reinstall
-pip install --force-reinstall featureflagshq-sdk
+pip install --force-reinstall featureflagshq
 
 # Install specific version
-pip install featureflagshq-sdk==2.0.1
+pip install featureflagshq==2.0.1
 ```
 
 ## Directory Structure for Package
 
 ```
-featureflagshq-sdk/
+featureflagshq/
 ├── featureflagshq/           # Main package
 │   ├── __init__.py           # Package initialization
 │   └── sdk.py                # Main SDK code
@@ -328,7 +328,7 @@ python -m venv test_install
 source test_install/bin/activate
 
 # Install from PyPI
-pip install featureflagshq-sdk
+pip install featureflagshq
 
 # Test basic functionality
 python -c "

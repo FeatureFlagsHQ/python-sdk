@@ -734,17 +734,17 @@ myproject/
 │   ├── dashboard.html          # Dashboard with flags
 │   └── feature_flags/
 │       └── debug_panel.html    # Debug panel template
-├── requirements.txt            # Add featureflagshq-sdk
+├── requirements.txt            # Add featureflagshq
 └── manage.py
 
 Installation Steps:
 ==================
 
 1. Install the SDK:
-   pip install featureflagshq-sdk
+   pip install featureflagshq
 
 2. Add to requirements.txt:
-   featureflagshq-sdk>=1.0.0
+   featureflagshq>=1.0.0
 
 3. Configure environment variables:
    export FEATUREFLAGSHQ_CLIENT_ID='your_client_id'
