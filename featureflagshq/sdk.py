@@ -678,7 +678,7 @@ class FeatureFlagsHQSDK:
                 return
 
             # Use shorter intervals for faster shutdown response
-            poll_interval = min(POLLING_INTERVAL, 10)  # Max 10 seconds for testing
+            poll_interval = POLLING_INTERVAL
             while not self._stop_event.wait(poll_interval):
                 # Check if we should stop before doing any work 
                 if self._stop_event.is_set():
@@ -720,7 +720,7 @@ class FeatureFlagsHQSDK:
         logger.debug("Log upload worker started")
         try:
             # Use shorter intervals for faster shutdown response
-            upload_interval = min(LOG_UPLOAD_INTERVAL, 5)  # Max 5 seconds for testing
+            upload_interval = LOG_UPLOAD_INTERVAL
             while not self._stop_event.wait(upload_interval):
                 # Check if we should stop before doing any work
                 if self._stop_event.is_set():
