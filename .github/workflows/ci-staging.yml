@@ -1,14 +1,15 @@
 name: Test and Publish to TestPyPI
 
 on:
-  push:
-    branches: [ staging, develop ]
   pull_request:
     branches: [ staging ]
+    types: [ closed ]
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    # Only run if PR was merged (not just closed)
+    if: github.event.pull_request.merged == true
     strategy:
       matrix:
         python-version: [3.8, 3.9, '3.10', '3.11', '3.12']
@@ -53,8 +54,8 @@ jobs:
   publish:
     needs: test
     runs-on: ubuntu-latest
-    # Only publish on pushes to staging branch (typically merges)
-    if: github.event_name == 'push' && github.ref == 'refs/heads/staging'
+    # Only publish when PR is merged into staging branch
+    if: github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'staging'
 
     steps:
       - uses: actions/checkout@v4
