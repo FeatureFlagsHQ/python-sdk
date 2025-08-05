@@ -1,7 +1,7 @@
 # FeatureFlagsHQ Python SDK
 
-[![PyPI version](https://badge.fury.io/py/featureflagshq-sdk.svg)](https://badge.fury.io/py/featureflagshq-sdk)
-[![Python Support](https://img.shields.io/pypi/pyversions/featureflagshq-sdk.svg)](https://pypi.org/project/featureflagshq-sdk/)
+[![PyPI version](https://badge.fury.io/py/featureflagshq.svg)](https://badge.fury.io/py/featureflagshq)
+[![Python Support](https://img.shields.io/pypi/pyversions/featureflagshq.svg)](https://pypi.org/project/featureflagshq/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 A secure, high-performance Python SDK for [FeatureFlagsHQ](https://featureflagshq.com) feature flag management with enterprise-grade security, offline support, and comprehensive analytics.
@@ -19,7 +19,7 @@ A secure, high-performance Python SDK for [FeatureFlagsHQ](https://featureflagsh
 ## Installation
 
 ```bash
-pip install featureflagshq-sdk
+pip install featureflagshq
 ```
 
 ## Quick Start

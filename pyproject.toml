@@ -3,7 +3,7 @@ requires = ["setuptools>=45", "wheel", "setuptools-scm[toml]>=6.2"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "featureflagshq-sdk"
+name = "featureflagshq"
 dynamic = ["version"]
 description = "A secure, high-performance Python SDK for FeatureFlagsHQ feature flag management"
 readme = "README.md"

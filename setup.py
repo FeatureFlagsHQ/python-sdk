@@ -33,7 +33,7 @@ def get_package_info():
 version, company_name = get_package_info()
 
 setup(
-    name="featureflagshq-sdk",
+    name="featureflagshq",
     version=version,
     author=company_name,
     author_email="hello@featureflagshq.com",
