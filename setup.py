@@ -43,7 +43,7 @@ setup(
     url="https://github.com/featureflagshq/python-sdk",
     project_urls={
         "Bug Tracker": "https://github.com/featureflagshq/python-sdk/issues",
-        "Documentation": "https://docs.featureflagshq.com",
+        "Documentation": "https://featureflagshq.com/documentation/",
         "Homepage": "https://featureflagshq.com",
     },
     packages=find_packages(),

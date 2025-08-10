@@ -429,7 +429,7 @@ class TestFeatureFlagsHQSDK(unittest.TestCase):
     def test_environment_variable_initialization(self):
         """Test SDK initialization from environment variables"""
         import os
-        
+
         # Mock environment variables
         with patch.dict(os.environ, {
             'FEATUREFLAGSHQ_CLIENT_ID': 'env_client_id',
@@ -438,12 +438,12 @@ class TestFeatureFlagsHQSDK(unittest.TestCase):
         }):
             with patch('featureflagshq.sdk.requests.Session'):
                 sdk = FeatureFlagsHQSDK(offline_mode=True)
-                
+
                 # Should use environment variables
                 self.assertEqual(sdk.client_id, 'env_client_id')
                 self.assertEqual(sdk.client_secret, 'env_client_secret')
                 self.assertEqual(sdk.environment, 'env_test')
-                
+
                 sdk.shutdown()
 
     def test_json_and_float_flag_types(self):
@@ -585,8 +585,8 @@ class TestFeatureFlagsHQSDK(unittest.TestCase):
 
             # Test flag evaluation with invalid segments
             invalid_segments = {"": "value"}  # Empty key
-            result = sdk.get_bool("user123", "test_flag", 
-                                segments=invalid_segments, default_value=False)
+            result = sdk.get_bool("user123", "test_flag",
+                                  segments=invalid_segments, default_value=False)
             self.assertFalse(result)
 
             # Test refresh with offline mode
@@ -693,18 +693,18 @@ class TestAdditionalSDKFeatures(unittest.TestCase):
         """Test SecurityFilter functionality"""
         from featureflagshq.sdk import SecurityFilter
         import logging
-        
+
         filter_instance = SecurityFilter()
-        
+
         # Create a mock log record
         record = logging.LogRecord(
             name="test", level=logging.INFO, pathname="", lineno=0,
             msg="secret: sensitive_data, signature: auth_token", args=(), exc_info=None
         )
-        
+
         # Apply filter
         result = filter_instance.filter(record)
-        
+
         # Should return True but modify the message
         self.assertTrue(result)
         self.assertIn("[REDACTED]", str(record.msg))
@@ -723,24 +723,24 @@ class TestAdditionalSDKFeatures(unittest.TestCase):
                 client_secret=self.client_secret,
                 offline_mode=True
             )
-            
+
             payload = '{"test": "data"}'
             timestamp = "1234567890"
-            
+
             signature = sdk._generate_signature(payload, timestamp)
-            
+
             # Should return a base64 encoded string
             self.assertIsInstance(signature, str)
             self.assertGreater(len(signature), 0)
-            
+
             # Same inputs should produce same signature
             signature2 = sdk._generate_signature(payload, timestamp)
             self.assertEqual(signature, signature2)
-            
+
             # Different inputs should produce different signatures
             signature3 = sdk._generate_signature(payload, "9876543210")
             self.assertNotEqual(signature, signature3)
-            
+
             sdk.shutdown()
 
     def test_segment_matching_numeric_comparisons(self):
@@ -751,39 +751,39 @@ class TestAdditionalSDKFeatures(unittest.TestCase):
                 client_secret=self.client_secret,
                 offline_mode=True
             )
-            
+
             # Test integer comparisons
             segment = {'name': 'age', 'comparator': '>', 'value': '18', 'type': 'int'}
             segments = {'age': 25}
             self.assertTrue(sdk._check_segment_match(segment, segments))
-            
+
             segments = {'age': 15}
             self.assertFalse(sdk._check_segment_match(segment, segments))
-            
+
             # Test float comparisons
             segment = {'name': 'score', 'comparator': '>=', 'value': '85.5', 'type': 'float'}
             segments = {'score': 90.0}
             self.assertTrue(sdk._check_segment_match(segment, segments))
-            
+
             segments = {'score': 80.0}
             self.assertFalse(sdk._check_segment_match(segment, segments))
-            
+
             # Test contains operator
             segment = {'name': 'tags', 'comparator': 'contains', 'value': 'premium', 'type': 'string'}
             segments = {'tags': 'user-premium-active'}
             self.assertTrue(sdk._check_segment_match(segment, segments))
-            
+
             segments = {'tags': 'basic-user'}
             self.assertFalse(sdk._check_segment_match(segment, segments))
-            
+
             # Test boolean comparisons
             segment = {'name': 'is_beta', 'comparator': '==', 'value': 'true', 'type': 'bool'}
             segments = {'is_beta': True}
             self.assertTrue(sdk._check_segment_match(segment, segments))
-            
+
             segments = {'is_beta': False}
             self.assertFalse(sdk._check_segment_match(segment, segments))
-            
+
             sdk.shutdown()
 
     def test_segment_matching_error_cases(self):
@@ -794,31 +794,313 @@ class TestAdditionalSDKFeatures(unittest.TestCase):
                 client_secret=self.client_secret,
                 offline_mode=True
             )
-            
+
             # Test invalid type conversion
             segment = {'name': 'age', 'comparator': '>', 'value': 'not_a_number', 'type': 'int'}
             segments = {'age': 25}
             self.assertFalse(sdk._check_segment_match(segment, segments))
-            
+
             # Test missing segment value
             segment = {'name': 'missing_key', 'comparator': '==', 'value': 'test', 'type': 'string'}
             segments = {'age': 25}
             self.assertFalse(sdk._check_segment_match(segment, segments))
-            
+
             # Test invalid comparator
             segment = {'name': 'age', 'comparator': 'invalid_op', 'value': '18', 'type': 'int'}
             segments = {'age': 25}
             self.assertFalse(sdk._check_segment_match(segment, segments))
-            
+
+            sdk.shutdown()
+
+    def test_segment_evaluation_requirement_one_or_more_match(self):
+        """Test that flag evaluation requires at least one segment to match when segments are present"""
+        with patch('featureflagshq.sdk.requests.Session'):
+            sdk = FeatureFlagsHQSDK(
+                client_id=self.client_id,
+                client_secret=self.client_secret,
+                offline_mode=True
+            )
+
+            # Flag with multiple active segments
+            flag_data = {
+                'name': 'test_flag',
+                'is_active': True,
+                'value': 'enabled_value',
+                'type': 'string',
+                'segments': [
+                    {'name': 'country', 'comparator': '==', 'value': 'US', 'type': 'string', 'is_active': True},
+                    {'name': 'age', 'comparator': '>', 'value': '18', 'type': 'int', 'is_active': True},
+                    {'name': 'plan', 'comparator': '==', 'value': 'premium', 'type': 'string', 'is_active': True}
+                ]
+            }
+
+            # Case 1: No segments provided - should return default value
+            result, context = sdk._evaluate_flag(flag_data, "user123", None)
+            self.assertEqual(result, '')  # Default string value
+            self.assertTrue(context['default_value_used'])
+            self.assertEqual(context['reason'], 'segment_not_matched')
+            self.assertEqual(len(context['segments_matched']), 0)
+
+            # Case 2: User segments don't match any flag segments - should return default
+            user_segments = {'country': 'UK', 'age': 16, 'plan': 'basic'}
+            result, context = sdk._evaluate_flag(flag_data, "user123", user_segments)
+            self.assertEqual(result, '')  # Default string value
+            self.assertTrue(context['default_value_used'])
+            self.assertEqual(context['reason'], 'segment_not_matched')
+            self.assertEqual(len(context['segments_matched']), 0)
+
+            # Case 3: One segment matches - should return flag value
+            user_segments = {'country': 'US', 'age': 16, 'plan': 'basic'}
+            result, context = sdk._evaluate_flag(flag_data, "user123", user_segments)
+            self.assertEqual(result, 'enabled_value')
+            self.assertFalse(context['default_value_used'])
+            self.assertEqual(context['reason'], 'active_flag')
+            self.assertEqual(len(context['segments_matched']), 1)
+            self.assertIn('country', context['segments_matched'])
+
+            # Case 4: Multiple segments match - should return flag value
+            user_segments = {'country': 'US', 'age': 25, 'plan': 'premium'}
+            result, context = sdk._evaluate_flag(flag_data, "user123", user_segments)
+            self.assertEqual(result, 'enabled_value')
+            self.assertFalse(context['default_value_used'])
+            self.assertEqual(context['reason'], 'active_flag')
+            self.assertEqual(len(context['segments_matched']), 3)
+
+            sdk.shutdown()
+
+    def test_segment_evaluation_with_inactive_segments(self):
+        """Test that inactive segments are filtered out during evaluation"""
+        with patch('featureflagshq.sdk.requests.Session'):
+            sdk = FeatureFlagsHQSDK(
+                client_id=self.client_id,
+                client_secret=self.client_secret,
+                offline_mode=True
+            )
+
+            # Flag with mix of active and inactive segments
+            flag_data = {
+                'name': 'test_flag',
+                'is_active': True,
+                'value': 'enabled_value',
+                'type': 'string',
+                'segments': [
+                    {'name': 'country', 'comparator': '==', 'value': 'US', 'type': 'string', 'is_active': True},
+                    {'name': 'age', 'comparator': '>', 'value': '18', 'type': 'int', 'is_active': False},  # Inactive
+                    {'name': 'plan', 'comparator': '==', 'value': 'premium', 'type': 'string', 'is_active': True}
+                ]
+            }
+
+            # User would match the inactive age segment, but it should be ignored
+            user_segments = {'country': 'UK', 'age': 25, 'plan': 'basic'}
+            result, context = sdk._evaluate_flag(flag_data, "user123", user_segments)
+            self.assertEqual(result, '')  # Default value since no active segments match
+            self.assertTrue(context['default_value_used'])
+            self.assertEqual(context['reason'], 'segment_not_matched')
+            self.assertEqual(len(context['segments_matched']), 0)
+            self.assertEqual(len(context['segments_evaluated']), 2)  # Only active segments evaluated
+            self.assertNotIn('age', context['segments_evaluated'])  # Inactive segment not evaluated
+
+            sdk.shutdown()
+
+    def test_segment_evaluation_no_active_segments(self):
+        """Test behavior when all segments are inactive"""
+        with patch('featureflagshq.sdk.requests.Session'):
+            sdk = FeatureFlagsHQSDK(
+                client_id=self.client_id,
+                client_secret=self.client_secret,
+                offline_mode=True
+            )
+
+            # Flag with all inactive segments
+            flag_data = {
+                'name': 'test_flag',
+                'is_active': True,
+                'value': 'enabled_value',
+                'type': 'string',
+                'segments': [
+                    {'name': 'country', 'comparator': '==', 'value': 'US', 'type': 'string', 'is_active': False},
+                    {'name': 'age', 'comparator': '>', 'value': '18', 'type': 'int', 'is_active': False}
+                ]
+            }
+
+            # Since no segments are active, flag should return its value (no segment filtering)
+            user_segments = {'country': 'US', 'age': 25}
+            result, context = sdk._evaluate_flag(flag_data, "user123", user_segments)
+            self.assertEqual(result, 'enabled_value')
+            self.assertFalse(context['default_value_used'])
+            self.assertEqual(context['reason'], 'active_flag')
+
+            sdk.shutdown()
+
+    def test_segment_evaluation_mixed_scenarios(self):
+        """Test complex scenarios with mixed segment conditions"""
+        with patch('featureflagshq.sdk.requests.Session'):
+            sdk = FeatureFlagsHQSDK(
+                client_id=self.client_id,
+                client_secret=self.client_secret,
+                offline_mode=True
+            )
+
+            # Complex flag with different segment types and comparators
+            flag_data = {
+                'name': 'test_flag',
+                'is_active': True,
+                'value': True,
+                'type': 'bool',
+                'segments': [
+                    {'name': 'country', 'comparator': '==', 'value': 'US', 'type': 'string', 'is_active': True},
+                    {'name': 'age', 'comparator': '>=', 'value': '21', 'type': 'int', 'is_active': True},
+                    {'name': 'score', 'comparator': '>', 'value': '85.0', 'type': 'float', 'is_active': True},
+                    {'name': 'is_premium', 'comparator': '==', 'value': 'true', 'type': 'bool', 'is_active': True},
+                    {'name': 'tags', 'comparator': 'contains', 'value': 'vip', 'type': 'string', 'is_active': True}
+                ]
+            }
+
+            # User matching multiple different segment types
+            user_segments = {
+                'country': 'US',
+                'age': 25,
+                'score': 90.5,
+                'is_premium': True,
+                'tags': 'user-vip-gold'
+            }
+            result, context = sdk._evaluate_flag(flag_data, "user123", user_segments)
+            self.assertTrue(result)
+            self.assertFalse(context['default_value_used'])
+            self.assertEqual(len(context['segments_matched']), 5)  # All segments match
+
+            # User matching only some segments
+            user_segments = {
+                'country': 'US',
+                'age': 18,  # Doesn't match >=21
+                'score': 80.0,  # Doesn't match >85.0
+                'is_premium': True,
+                'tags': 'user-basic'  # Doesn't contain 'vip'
+            }
+            result, context = sdk._evaluate_flag(flag_data, "user123", user_segments)
+            self.assertTrue(result)  # Should still get flag value since country and is_premium match
+            self.assertFalse(context['default_value_used'])
+            self.assertEqual(len(context['segments_matched']), 2)  # country and is_premium match
+            self.assertIn('country', context['segments_matched'])
+            self.assertIn('is_premium', context['segments_matched'])
+
+            sdk.shutdown()
+
+    def test_segment_stats_tracking(self):
+        """Test that segment matching statistics are properly tracked"""
+        with patch('featureflagshq.sdk.requests.Session'):
+            sdk = FeatureFlagsHQSDK(
+                client_id=self.client_id,
+                client_secret=self.client_secret,
+                offline_mode=True
+            )
+
+            flag_data = {
+                'name': 'test_flag',
+                'is_active': True,
+                'value': 'test_value',
+                'type': 'string',
+                'segments': [
+                    {'name': 'country', 'comparator': '==', 'value': 'US', 'type': 'string', 'is_active': True},
+                    {'name': 'plan', 'comparator': '==', 'value': 'premium', 'type': 'string', 'is_active': True}
+                ]
+            }
+
+            initial_matches = sdk.stats['segment_matches']
+
+            # Evaluate flag with matching segments
+            user_segments = {'country': 'US', 'plan': 'premium'}
+            result, context = sdk._evaluate_flag(flag_data, "user123", user_segments)
+
+            # Stats should be updated
+            self.assertEqual(sdk.stats['segment_matches'], initial_matches + 2)  # Both segments matched
+
+            # Evaluate with partial match
+            user_segments = {'country': 'US', 'plan': 'basic'}
+            result, context = sdk._evaluate_flag(flag_data, "user456", user_segments)
+
+            # Stats should be updated again
+            self.assertEqual(sdk.stats['segment_matches'], initial_matches + 3)  # +1 more match
+
+            sdk.shutdown()
+
+    def test_public_api_segment_evaluation(self):
+        """Test segment evaluation through public API methods"""
+        with patch('featureflagshq.sdk.requests.Session'):
+            sdk = FeatureFlagsHQSDK(
+                client_id=self.client_id,
+                client_secret=self.client_secret,
+                offline_mode=True
+            )
+
+            # Set up flag with segments directly in SDK
+            sdk.flags = {
+                'premium_feature': {
+                    'name': 'premium_feature',
+                    'is_active': True,
+                    'value': True,
+                    'type': 'bool',
+                    'segments': [
+                        {'name': 'plan', 'comparator': '==', 'value': 'premium', 'type': 'string', 'is_active': True},
+                        {'name': 'country', 'comparator': '==', 'value': 'US', 'type': 'string', 'is_active': True}
+                    ]
+                },
+                'discount_percentage': {
+                    'name': 'discount_percentage',
+                    'is_active': True,
+                    'value': 20,
+                    'type': 'int',
+                    'segments': [
+                        {'name': 'loyalty_years', 'comparator': '>=', 'value': '2', 'type': 'int', 'is_active': True}
+                    ]
+                }
+            }
+
+            # Test 1: User with matching segment should get flag value
+            user_segments = {'plan': 'premium', 'country': 'US'}
+            result = sdk.get_bool("user123", "premium_feature", segments=user_segments)
+            self.assertTrue(result)
+
+            # Test 2: User without matching segments should get default value
+            user_segments = {'plan': 'basic', 'country': 'UK'}
+            result = sdk.get_bool("user456", "premium_feature", default_value=False, segments=user_segments)
+            self.assertFalse(result)
+
+            # Test 3: Custom default value should be used when segments don't match
+            user_segments = {'plan': 'basic', 'country': 'UK'}
+            result = sdk.get_bool("user789", "premium_feature", default_value=True, segments=user_segments)
+            self.assertTrue(result)  # Should get custom default, not flag default
+
+            # Test 4: Numeric segment evaluation
+            user_segments = {'loyalty_years': 3}
+            result = sdk.get_int("loyal_user", "discount_percentage", segments=user_segments)
+            self.assertEqual(result, 20)
+
+            user_segments = {'loyalty_years': 1}  # Doesn't meet >=2 requirement
+            result = sdk.get_int("new_user", "discount_percentage", default_value=5, segments=user_segments)
+            self.assertEqual(result, 5)  # Should get custom default
+
+            # Test 5: get_user_flags with segments
+            user_segments = {'plan': 'premium', 'country': 'US', 'loyalty_years': 3}
+            all_flags = sdk.get_user_flags("power_user", segments=user_segments)
+            self.assertTrue(all_flags['premium_feature'])
+            self.assertEqual(all_flags['discount_percentage'], 20)
+
+            # Test 6: get_user_flags with non-matching segments
+            user_segments = {'plan': 'basic', 'country': 'UK', 'loyalty_years': 0}
+            all_flags = sdk.get_user_flags("basic_user", segments=user_segments)
+            self.assertFalse(all_flags['premium_feature'])  # Default bool value
+            self.assertEqual(all_flags['discount_percentage'], 0)  # Default int value
+
             sdk.shutdown()
 
     def test_flag_change_callback(self):
         """Test flag change callback functionality"""
         callback_calls = []
-        
+
         def flag_change_callback(flag_name, old_value, new_value):
             callback_calls.append((flag_name, old_value, new_value))
-        
+
         with patch('featureflagshq.sdk.requests.Session'):
             sdk = FeatureFlagsHQSDK(
                 client_id=self.client_id,
@@ -826,33 +1108,33 @@ class TestAdditionalSDKFeatures(unittest.TestCase):
                 offline_mode=True,
                 on_flag_change=flag_change_callback
             )
-            
+
             # Set initial flags
             sdk.flags = {'test_flag': {'name': 'test_flag', 'value': True}}
-            
+
             # Simulate flag update through polling worker logic
             old_flags = dict(sdk.flags)
             new_flags = {'test_flag': {'name': 'test_flag', 'value': False}}
-            
+
             # Manually trigger change detection logic
             with sdk._lock:
                 for flag_name, new_flag_data in new_flags.items():
                     old_flag_data = old_flags.get(flag_name)
                     old_value = old_flag_data.get('value') if old_flag_data else None
                     new_value = new_flag_data.get('value')
-                    
+
                     if old_value != new_value:
                         try:
                             sdk.on_flag_change(flag_name, old_value, new_value)
                         except Exception as e:
                             pass
-                
+
                 sdk.flags.update(new_flags)
-            
+
             # Verify callback was called
             self.assertEqual(len(callback_calls), 1)
             self.assertEqual(callback_calls[0], ('test_flag', True, False))
-            
+
             sdk.shutdown()
 
     def test_system_info_collection(self):
@@ -863,7 +1145,7 @@ class TestAdditionalSDKFeatures(unittest.TestCase):
                 client_secret=self.client_secret,
                 offline_mode=True
             )
-            
+
             system_info = sdk._system_info
             # Test that basic system info is collected
             self.assertIn('platform', system_info)
@@ -872,17 +1154,17 @@ class TestAdditionalSDKFeatures(unittest.TestCase):
             self.assertIn('process_id', system_info)
             self.assertIn('cpu_count', system_info)
             self.assertIn('memory_total', system_info)
-            
+
             # Test that values are reasonable
             self.assertIsInstance(system_info['process_id'], int)
             self.assertGreater(system_info['process_id'], 0)
-            
+
             sdk.shutdown()
 
     def test_alternative_environment_variables(self):
         """Test initialization with alternative environment variable names"""
         import os
-        
+
         # Test FEATUREFLAGSHQ_CLIENT_KEY instead of CLIENT_ID
         with patch.dict(os.environ, {
             'FEATUREFLAGSHQ_CLIENT_KEY': 'env_client_key',
@@ -890,10 +1172,10 @@ class TestAdditionalSDKFeatures(unittest.TestCase):
         }):
             with patch('featureflagshq.sdk.requests.Session'):
                 sdk = FeatureFlagsHQSDK(offline_mode=True)
-                
+
                 self.assertEqual(sdk.client_id, 'env_client_key')
                 self.assertEqual(sdk.client_secret, 'env_client_secret')
-                
+
                 sdk.shutdown()
 
     def test_session_metadata_generation(self):
@@ -904,7 +1186,7 @@ class TestAdditionalSDKFeatures(unittest.TestCase):
                 client_secret=self.client_secret,
                 offline_mode=True
             )
-            
+
             # Add some stats
             sdk.stats['total_user_accesses'] = 100
             sdk.stats['unique_users'].add('user1')
@@ -916,21 +1198,21 @@ class TestAdditionalSDKFeatures(unittest.TestCase):
             sdk.stats['evaluation_times']['count'] = 5
             sdk.stats['evaluation_times']['min_ms'] = 8.0
             sdk.stats['evaluation_times']['max_ms'] = 15.0
-            
+
             metadata = sdk._get_session_metadata()
-            
+
             self.assertIn('session_id', metadata)
             self.assertIn('environment', metadata)
             self.assertIn('system_info', metadata)
             self.assertIn('stats', metadata)
-            
+
             self.assertEqual(metadata['stats']['total_user_accesses'], 100)
             self.assertEqual(metadata['stats']['unique_users_count'], 2)
             self.assertEqual(metadata['stats']['unique_flags_count'], 1)
             self.assertEqual(metadata['stats']['segment_matches'], 5)
             self.assertEqual(metadata['stats']['rollout_evaluations'], 10)
             self.assertEqual(metadata['stats']['evaluation_times']['avg_ms'], 10.0)
-            
+
             sdk.shutdown()
 
     def test_log_queue_overflow(self):
@@ -941,23 +1223,23 @@ class TestAdditionalSDKFeatures(unittest.TestCase):
                 client_secret=self.client_secret,
                 offline_mode=True
             )
-            
+
             # Fill the queue to capacity (Queue default maxsize is 0 = unlimited,
             # but we can test the put_nowait behavior)
             from queue import Queue
             original_queue = sdk.logs_queue
             sdk.logs_queue = Queue(maxsize=2)  # Small queue for testing
-            
+
             # Fill the queue
             sdk.logs_queue.put({'test': 'entry1'})
             sdk.logs_queue.put({'test': 'entry2'})
-            
+
             # This should not raise an exception, but silently ignore the overflow
             sdk._log_access('user123', 'test_flag', True, {}, 1.0)
-            
+
             # Queue should still have original 2 items
             self.assertEqual(sdk.logs_queue.qsize(), 2)
-            
+
             sdk.shutdown()
 
     def test_type_conversion_edge_cases(self):
@@ -968,18 +1250,18 @@ class TestAdditionalSDKFeatures(unittest.TestCase):
                 client_secret=self.client_secret,
                 offline_mode=True
             )
-            
+
             # Test boolean edge cases
             self.assertTrue(sdk._convert_value('YES', 'bool'))
             self.assertTrue(sdk._convert_value('1', 'bool'))
             self.assertFalse(sdk._convert_value('false', 'bool'))
             self.assertFalse(sdk._convert_value('0', 'bool'))
             self.assertFalse(sdk._convert_value('no', 'bool'))
-            
+
             # Test already correct type
             self.assertTrue(sdk._convert_value(True, 'bool'))
             self.assertFalse(sdk._convert_value(False, 'bool'))
-            
+
             # Test complex JSON
             complex_json = {
                 "nested": {
@@ -990,49 +1272,49 @@ class TestAdditionalSDKFeatures(unittest.TestCase):
             }
             result = sdk._convert_value(complex_json, 'json')
             self.assertEqual(result, complex_json)
-            
+
             # Test JSON list
             json_array = ["item1", "item2", {"key": "value"}]
             result = sdk._convert_value(json_array, 'json')
             self.assertEqual(result, json_array)
-            
+
             # Test invalid JSON string
             result = sdk._convert_value('{invalid json}', 'json')
             self.assertEqual(result, {})  # Should return default
-            
+
             # Test unknown type
             result = sdk._convert_value('test', 'unknown_type')
             self.assertEqual(result, 'test')  # Should return as string
-            
+
             sdk.shutdown()
 
     @responses.activate
     def test_network_timeout_scenarios(self):
         """Test network timeout handling"""
-        from requests.exceptions import Timeout, ConnectionError
-        
+        from requests.exceptions import Timeout
+
         # Mock timeout response
         responses.add(
             responses.GET,
             f"{DEFAULT_API_BASE_URL}/v1/flags/",
             body=Timeout("Request timeout")
         )
-        
+
         sdk = FeatureFlagsHQSDK(
             client_id=self.client_id,
             client_secret=self.client_secret,
             timeout=1  # Short timeout
         )
-        
+
         try:
             # Should handle timeout gracefully
             flags = sdk._fetch_flags()
             self.assertEqual(flags, {})
-            
+
             # Check that network error was recorded
             stats = sdk.get_stats()
             self.assertGreaterEqual(stats['errors']['network_errors'], 0)
-            
+
         finally:
             sdk.shutdown()
 
@@ -1044,25 +1326,25 @@ class TestAdditionalSDKFeatures(unittest.TestCase):
                 client_secret=self.client_secret,
                 offline_mode=True
             )
-            
+
             # Test SQL injection patterns that should be caught by the validation
             # The validation looks for specific SQL keywords, let's test those
             malicious_inputs = [
                 "test--comment",  # SQL comment
-                "user;drop",      # Semicolon + drop  
-                "user/**/select", # SQL comment style
-                "unionselect",    # Union keyword
-                "insertinto",     # Insert keyword
-                "deletefrom",     # Delete keyword
-                "updateset",      # Update keyword
-                "droptable"       # Drop keyword
+                "user;drop",  # Semicolon + drop
+                "user/**/select",  # SQL comment style
+                "unionselect",  # Union keyword
+                "insertinto",  # Insert keyword
+                "deletefrom",  # Delete keyword
+                "updateset",  # Update keyword
+                "droptable"  # Drop keyword
             ]
-            
+
             for malicious_input in malicious_inputs:
                 with self.assertRaises(ValueError) as cm:
                     sdk._validate_string(malicious_input, "test_field")
                 self.assertIn("potentially dangerous content", str(cm.exception))
-            
+
             sdk.shutdown()
 
     def test_flag_evaluation_with_inactive_flag(self):
@@ -1073,7 +1355,7 @@ class TestAdditionalSDKFeatures(unittest.TestCase):
                 client_secret=self.client_secret,
                 offline_mode=True
             )
-            
+
             # Flag that is inactive
             flag_data = {
                 'name': 'test_flag',
@@ -1081,13 +1363,13 @@ class TestAdditionalSDKFeatures(unittest.TestCase):
                 'type': 'bool',
                 'is_active': False
             }
-            
+
             result, context = sdk._evaluate_flag(flag_data, "user123")
             self.assertFalse(result)  # Should return default for bool when inactive
             self.assertTrue(context['default_value_used'])
             self.assertEqual(context['reason'], 'flag_inactive')
             self.assertFalse(context['flag_active'])
-            
+
             sdk.shutdown()
 
 

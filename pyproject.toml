@@ -44,7 +44,7 @@ dev = [
 
 [project.urls]
 Homepage = "https://featureflagshq.com"
-Documentation = "https://docs.featureflagshq.com"
+Documentation = "https://featureflagshq.com/documentation/"
 Repository = "https://github.com/featureflagshq/python-sdk"
 "Bug Tracker" = "https://github.com/featureflagshq/python-sdk/issues"
 

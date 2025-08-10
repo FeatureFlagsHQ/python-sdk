@@ -420,33 +420,38 @@ class FeatureFlagsHQSDK:
             evaluation_context['total_sdk_time_ms'] = evaluation_time
             return value, evaluation_context
 
-        # Check segments if provided
-        if segments and flag_data.get('segments'):
-            segments_matched = []
-            segments_evaluated = []
+        # Check segments if they exist on the flag
+        flag_segments = flag_data.get('segments')
+        if flag_segments:
+            # Filter out inactive segments
+            active_segments = [seg for seg in flag_segments if seg.get('is_active', True)]
 
-            for segment in flag_data['segments']:
-                segment_name = segment.get('name', '')
-                segments_evaluated.append(segment_name)
+            if active_segments:
+                segments_matched = []
+                segments_evaluated = []
 
-                if self._check_segment_match(segment, segments):
-                    segments_matched.append(segment_name)
+                for segment in active_segments:
+                    segment_name = segment.get('name', '')
+                    segments_evaluated.append(segment_name)
 
-            evaluation_context['segments_matched'] = segments_matched
-            evaluation_context['segments_evaluated'] = segments_evaluated
+                    if self._check_segment_match(segment, segments or {}):
+                        segments_matched.append(segment_name)
 
-            # Update stats
-            with self._stats_lock:
-                self.stats['segment_matches'] += len(segments_matched)
+                evaluation_context['segments_matched'] = segments_matched
+                evaluation_context['segments_evaluated'] = segments_evaluated
 
-            # If segments exist but none matched, return default
-            if flag_data.get('segments') and not segments_matched:
-                evaluation_context['default_value_used'] = True
-                evaluation_context['reason'] = 'segment_not_matched'
-                value = self._get_default_value(flag_data.get('type', 'string'))
-                evaluation_time = (time.time() - start_time) * 1000
-                evaluation_context['total_sdk_time_ms'] = evaluation_time
-                return value, evaluation_context
+                # Update stats
+                with self._stats_lock:
+                    self.stats['segment_matches'] += len(segments_matched)
+
+                # If there are active segments but none matched, return default
+                if not segments_matched:
+                    evaluation_context['default_value_used'] = True
+                    evaluation_context['reason'] = 'segment_not_matched'
+                    value = self._get_default_value(flag_data.get('type', 'string'))
+                    evaluation_time = (time.time() - start_time) * 1000
+                    evaluation_context['total_sdk_time_ms'] = evaluation_time
+                    return value, evaluation_context
 
         # Check rollout percentage
         rollout_percentage = flag_data.get('rollout', {}).get('percentage', 100)
@@ -483,29 +488,36 @@ class FeatureFlagsHQSDK:
 
         return value, evaluation_context
 
-    def _check_segment_match(self, segment: Dict, segments: Dict[str, Any]) -> bool:
+    def _check_segment_match(self, segment: Dict, user_segments: Dict[str, Any]) -> bool:
         """Check if segment matches user attributes"""
         try:
             segment_name = segment.get('name')
-            if not segment_name or segment_name not in segments:
+            if not segment_name or segment_name not in user_segments:
                 return False
 
             comparator = segment.get('comparator', '==')
             segment_value = segment.get('value')
-            segment_type = segment.get('type', 'string')
-            user_value = segments[segment_name]
+            segment_type = segment.get('type', 'str')
+            user_value = user_segments[segment_name]
 
-            # Convert values to same type
-            if segment_type == 'int':
-                user_val = int(user_value)
-                seg_val = int(segment_value)
+            # Convert values to same type based on segment type
+            if segment_type in ['int', 'integer']:
+                user_val = int(float(user_value))
+                seg_val = int(float(segment_value))
             elif segment_type == 'float':
                 user_val = float(user_value)
                 seg_val = float(segment_value)
-            elif segment_type == 'bool':
-                user_val = bool(user_value)
-                seg_val = str(segment_value).lower() == 'true'
-            else:
+            elif segment_type in ['bool', 'boolean']:
+                if isinstance(user_value, bool):
+                    user_val = user_value
+                else:
+                    user_val = str(user_value).lower() in ('true', '1', 'yes')
+
+                if isinstance(segment_value, bool):
+                    seg_val = segment_value
+                else:
+                    seg_val = str(segment_value).lower() in ('true', '1', 'yes')
+            else:  # str or string
                 user_val = str(user_value)
                 seg_val = str(segment_value)
 
@@ -680,7 +692,7 @@ class FeatureFlagsHQSDK:
             # Use shorter intervals for faster shutdown response
             poll_interval = POLLING_INTERVAL
             while not self._stop_event.wait(poll_interval):
-                # Check if we should stop before doing any work 
+                # Check if we should stop before doing any work
                 if self._stop_event.is_set():
                     break
 
