@@ -1,15 +1,14 @@
 name: Test and Publish to TestPyPI
 
 on:
+  push:
+    branches: [ staging, develop ]
   pull_request:
     branches: [ staging ]
-    types: [ closed ]
 
 jobs:
   test:
     runs-on: ubuntu-latest
-    # Only run if PR was merged (not just closed)
-    if: github.event.pull_request.merged == true
     strategy:
       matrix:
         python-version: [3.8, 3.9, '3.10', '3.11', '3.12']
