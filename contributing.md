@@ -416,7 +416,7 @@ For maintainers releasing new versions:
 
 ### Getting Help
 
-- **Documentation**: Check our [official docs](https://docs.featureflagshq.com)
+- **Documentation**: Check our [official docs](https://featureflagshq.com/documentation/)
 - **Issues**: Search existing GitHub issues
 - **Discussions**: Use GitHub Discussions for questions
 - **Discord**: Join our community Discord server
