@@ -2,7 +2,7 @@ name: Test and Publish to TestPyPI
 
 on:
   push:
-    branches: [ staging, develop ]
+    branches: [ staging ]
   pull_request:
     branches: [ staging ]
 
