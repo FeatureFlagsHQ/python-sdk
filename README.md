@@ -3,21 +3,18 @@
 [![PyPI version](https://badge.fury.io/py/featureflagshq.svg)](https://badge.fury.io/py/featureflagshq)
 [![Python Support](https://img.shields.io/pypi/pyversions/featureflagshq.svg)](https://pypi.org/project/featureflagshq/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Build Status](https://github.com/featureflagshq/python-sdk/workflows/CI/badge.svg)](https://github.com/featureflagshq/python-sdk/actions)
-[![Coverage Status](https://codecov.io/gh/featureflagshq/python-sdk/branch/main/graph/badge.svg)](https://codecov.io/gh/featureflagshq/python-sdk)
-[![Security Rating](https://img.shields.io/badge/security-A+-brightgreen)](https://github.com/featureflagshq/python-sdk/security)
 
-Official Python SDK for **FeatureFlagsHQ** - Enterprise feature flag management with advanced security, targeting, and analytics.
+A secure, high-performance Python SDK for [FeatureFlagsHQ](https://featureflagshq.com) feature flag management with enterprise-grade security, offline support, and comprehensive analytics.
 
-## 🚀 Features
+## ✨ Features
 
-- **Enterprise Security**: HMAC authentication, rate limiting, circuit breakers
-- **Advanced Targeting**: User segments, percentage rollouts, sticky sessions  
-- **Real-time Updates**: Background polling with configurable intervals
-- **Comprehensive Analytics**: User access logs, performance metrics, security events
-- **Type Safety**: Full type hints and mypy compatibility
-- **Framework Agnostic**: Works with Django, Flask, FastAPI, and more
-- **Production Ready**: Memory monitoring, graceful shutdown, error handling
+- 🔒 **Enterprise Security**: HMAC authentication, input validation, and security filtering
+- ⚡ **High Performance**: Background polling, caching, and circuit breaker patterns
+- 🌐 **Offline Support**: Works seamlessly without internet connectivity
+- 📊 **Analytics & Metrics**: Comprehensive usage tracking and statistics
+- 🎯 **User Segmentation**: Advanced targeting based on user attributes
+- 🔄 **Real-time Updates**: Background flag synchronization with change callbacks
+- 🛡️ **Production Ready**: Rate limiting, error handling, and graceful degradation
 
 ## 📦 Installation
 
@@ -25,325 +22,403 @@ Official Python SDK for **FeatureFlagsHQ** - Enterprise feature flag management 
 pip install featureflagshq
 ```
 
-### Optional Dependencies
+## 🚀 Quick Start
+
+```python
+from featureflagshq import FeatureFlagsHQSDK
+
+# Initialize the SDK
+sdk = FeatureFlagsHQSDK(
+    client_id="your_client_id",
+    client_secret="your_client_secret",
+    environment="production"  # or "staging", "development"
+)
+
+# Get a feature flag value
+user_id = "user_123"
+is_enabled = sdk.get_bool(user_id, "new_dashboard", default_value=False)
+
+if is_enabled:
+    print("New dashboard is enabled for this user!")
+else:
+    print("Using classic dashboard")
+
+# Clean shutdown
+sdk.shutdown()
+```
+
+## ⚙️ Configuration
+
+### 🌍 Environment Variables
+
+The SDK can be configured using environment variables:
 
 ```bash
-# For development
-pip install featureflagshq[dev]
-
-# For testing  
-pip install featureflagshq[test]
-
-# For documentation
-pip install featureflagshq[docs]
+export FEATUREFLAGSHQ_CLIENT_ID="your_client_id"
+export FEATUREFLAGSHQ_CLIENT_SECRET="your_client_secret"
+export FEATUREFLAGSHQ_ENVIRONMENT="production"
 ```
 
-## 🔧 Quick Start
-
 ```python
-import featureflagshq
-
-# Initialize the client
-client = featureflagshq.create_client(
-    client_id="your-client-id",
-    client_secret="your-client-secret",
-    environment="production"
-)
-
-# Check if feature is enabled for user
-if client.is_flag_enabled_for_user("user123", "new_dashboard"):
-    # Show new dashboard
-    render_new_dashboard()
-else:
-    # Show old dashboard  
-    render_old_dashboard()
-
-# Get different types of flags
-max_items = client.get_int("user123", "max_items", default_value=10)
-welcome_msg = client.get_string("user123", "welcome_message", default_value="Hello!")
-config = client.get_json("user123", "ui_config", default_value={})
-
-# Use with segments for advanced targeting
-segments = {
-    "subscription": "premium", 
-    "region": "us-west",
-    "device": "mobile"
-}
-premium_feature = client.get_bool("user123", "premium_feature", segments=segments)
+# SDK will automatically use environment variables
+sdk = FeatureFlagsHQSDK()
 ```
 
-## 🎯 Advanced Usage
-
-### Context Manager (Recommended)
+### 🔧 Advanced Configuration
 
 ```python
-with featureflagshq.create_client("client-id", "client-secret") as client:
-    enabled = client.is_flag_enabled_for_user("user123", "feature")
-    # Client automatically shuts down when exiting context
-```
-
-### Batch Flag Evaluation
-
-```python
-# Get multiple flags at once
-user_flags = client.get_user_flags(
-    user_id="user123",
-    segments={"subscription": "premium"},
-    flag_keys=["feature_a", "feature_b", "feature_c"]  # optional filter
-)
-
-for flag_name, flag_value in user_flags.items():
-    print(f"{flag_name}: {flag_value}")
-```
-
-### Custom Configuration
-
-```python
-client = featureflagshq.FeatureFlagsHQSDK(
-    api_base_url="https://api.featureflagshq.com",
-    client_id="your-client-id",
-    client_secret="your-client-secret",
+sdk = FeatureFlagsHQSDK(
+    client_id="your_client_id",
+    client_secret="your_client_secret",
     environment="production",
-    polling_interval=300,        # 5 minutes
-    timeout=30,                  # 30 seconds
-    max_retries=3,              # Retry failed requests
-    enable_metrics=True,         # Analytics and logging
-    debug=False,                # Debug mode
-    offline_mode=False,         # Offline testing
-    custom_headers={"Custom-Header": "value"}
+    api_base_url="https://api.featureflagshq.com",  # Custom API endpoint
+    timeout=30,                                      # Request timeout
+    max_retries=3,                                   # Number of retries
+    offline_mode=False,                              # Enable offline mode
+    enable_metrics=True,                             # Enable analytics
+    on_flag_change=lambda name, old, new: print(f"Flag {name} changed!")
 )
 ```
 
-## 🏗️ Framework Integration
+## 💻 Usage Examples
 
-### Django
+### 🎯 Basic Flag Evaluation
 
 ```python
-# settings.py
-FEATUREFLAGSHQ_CLIENT_ID = "your-client-id"
-FEATUREFLAGSHQ_CLIENT_SECRET = "your-client-secret"
+from featureflagshq import FeatureFlagsHQSDK
 
-# Initialize in apps.py or middleware
-from django.apps import AppConfig
-import featureflagshq
+sdk = FeatureFlagsHQSDK(
+    client_id="your_client_id",
+    client_secret="your_client_secret"
+)
 
-class MyAppConfig(AppConfig):
-    def ready(self):
-        self.feature_flags = featureflagshq.create_client(
-            client_id=settings.FEATUREFLAGSHQ_CLIENT_ID,
-            client_secret=settings.FEATUREFLAGSHQ_CLIENT_SECRET
-        )
+user_id = "user_123"
 
-# Use in views
-def my_view(request):
-    if app_config.feature_flags.is_flag_enabled_for_user(
-        str(request.user.id), 
-        "new_feature"
-    ):
-        return render(request, 'new_template.html')
-    return render(request, 'old_template.html')
+# Boolean flags
+show_beta_feature = sdk.get_bool(user_id, "beta_feature", default_value=False)
+
+# String flags
+button_color = sdk.get_string(user_id, "button_color", default_value="blue")
+
+# Integer flags
+max_items = sdk.get_int(user_id, "max_items_per_page", default_value=10)
+
+# Float flags
+discount_rate = sdk.get_float(user_id, "discount_rate", default_value=0.0)
+
+# JSON flags
+config = sdk.get_json(user_id, "app_config", default_value={})
 ```
 
-### Flask
+### 👥 User Segmentation
 
 ```python
-from flask import Flask, g
-import featureflagshq
+# Define user segments for targeting
+user_segments = {
+    "country": "US",
+    "subscription": "premium",
+    "age": 25,
+    "beta_user": True
+}
+
+# Evaluate flags with segments
+is_premium_feature_enabled = sdk.get_bool(
+    user_id="user_123",
+    flag_name="premium_analytics",
+    default_value=False,
+    segments=user_segments
+)
+```
+
+### 📊 Bulk Flag Evaluation
+
+```python
+# Get all flags for a user
+all_flags = sdk.get_user_flags("user_123", segments=user_segments)
+print(f"All flags for user: {all_flags}")
+
+# Get specific flags only
+specific_flags = sdk.get_user_flags(
+    "user_123", 
+    segments=user_segments,
+    flag_keys=["feature_a", "feature_b", "feature_c"]
+)
+```
+
+### 🔄 Context Manager Usage
+
+```python
+# Automatic cleanup with context manager
+with FeatureFlagsHQSDK(client_id="...", client_secret="...") as sdk:
+    is_enabled = sdk.get_bool("user_123", "new_feature")
+    # SDK automatically shuts down when exiting the context
+```
+
+### 🏭 Production Setup
+
+```python
+from featureflagshq import create_production_client
+
+# Create a production-ready client with security hardening
+sdk = create_production_client(
+    client_id="your_client_id",
+    client_secret="your_client_secret",
+    environment="production",
+    timeout=30,
+    max_retries=3
+)
+```
+
+### 🌶️ Flask Integration
+
+```python
+from flask import Flask, request
+from featureflagshq import FeatureFlagsHQSDK
 
 app = Flask(__name__)
 
-@app.before_first_request
-def init_feature_flags():
-    app.feature_flags = featureflagshq.create_client(
-        client_id=app.config['FEATUREFLAGSHQ_CLIENT_ID'],
-        client_secret=app.config['FEATUREFLAGSHQ_CLIENT_SECRET']
-    )
+# Initialize SDK once
+sdk = FeatureFlagsHQSDK(
+    client_id="your_client_id",
+    client_secret="your_client_secret"
+)
 
 @app.route('/dashboard')
 def dashboard():
-    user_id = session.get('user_id')
-    if app.feature_flags.is_flag_enabled_for_user(user_id, "new_dashboard"):
-        return render_template('new_dashboard.html')
-    return render_template('old_dashboard.html')
+    user_id = request.user.id  # Get from your auth system
+    
+    # Check if new dashboard is enabled
+    use_new_dashboard = sdk.get_bool(user_id, "new_dashboard_v2")
+    
+    if use_new_dashboard:
+        return render_template('dashboard_v2.html')
+    else:
+        return render_template('dashboard_v1.html')
+
+# Clean shutdown when app closes
+@app.teardown_appcontext
+def shutdown_sdk(exception):
+    sdk.shutdown()
 ```
 
-### FastAPI
+### 🎸 Django Integration
 
 ```python
-from fastapi import FastAPI, Depends
-import featureflagshq
+# settings.py
+FEATUREFLAGSHQ_CLIENT_ID = "your_client_id"
+FEATUREFLAGSHQ_CLIENT_SECRET = "your_client_secret"
+FEATUREFLAGSHQ_ENVIRONMENT = "production"
 
-app = FastAPI()
+# utils.py
+from django.conf import settings
+from featureflagshq import FeatureFlagsHQSDK
 
-# Initialize client
-feature_flags = featureflagshq.create_client(
-    client_id="your-client-id",
-    client_secret="your-client-secret"
+_sdk_instance = None
+
+def get_feature_flags_sdk():
+    global _sdk_instance
+    if _sdk_instance is None:
+        _sdk_instance = FeatureFlagsHQSDK(
+            client_id=settings.FEATUREFLAGSHQ_CLIENT_ID,
+            client_secret=settings.FEATUREFLAGSHQ_CLIENT_SECRET,
+            environment=settings.FEATUREFLAGSHQ_ENVIRONMENT
+        )
+    return _sdk_instance
+
+# views.py
+from django.shortcuts import render
+from .utils import get_feature_flags_sdk
+
+def my_view(request):
+    sdk = get_feature_flags_sdk()
+    user_id = str(request.user.id)
+    
+    show_new_feature = sdk.get_bool(user_id, "new_feature")
+    
+    return render(request, 'template.html', {
+        'show_new_feature': show_new_feature
+    })
+```
+
+## 🔬 Advanced Features
+
+### 📞 Flag Change Callbacks
+
+```python
+def on_flag_changed(flag_name, old_value, new_value):
+    print(f"Flag '{flag_name}' changed from {old_value} to {new_value}")
+    # Trigger cache invalidation, send notifications, etc.
+
+sdk = FeatureFlagsHQSDK(
+    client_id="your_client_id",
+    client_secret="your_client_secret",
+    on_flag_change=on_flag_changed
+)
+```
+
+### 🔄 Manual Refresh and Cache Control
+
+```python
+# Manually refresh flags from server
+success = sdk.refresh_flags()
+if success:
+    print("Flags refreshed successfully")
+
+# Get all cached flags
+all_flags = sdk.get_all_flags()
+print(f"Cached flags: {list(all_flags.keys())}")
+
+# Force log upload
+sdk.flush_logs()
+```
+
+### 📈 SDK Health and Statistics
+
+```python
+# Get SDK health status
+health = sdk.get_health_check()
+print(f"SDK Status: {health['status']}")
+print(f"Cached Flags: {health['cached_flags_count']}")
+
+# Get detailed usage statistics
+stats = sdk.get_stats()
+print(f"Total API calls: {stats['api_calls']['total']}")
+print(f"Unique users: {stats['unique_users_count']}")
+print(f"Circuit breaker state: {stats['circuit_breaker']['state']}")
+```
+
+### 🌐 Offline Mode
+
+```python
+# Enable offline mode for environments without internet
+sdk = FeatureFlagsHQSDK(
+    client_id="your_client_id",
+    client_secret="your_client_secret",
+    offline_mode=True
 )
 
-async def get_feature_flags():
-    return feature_flags
-
-@app.get("/api/dashboard")
-async def get_dashboard(
-    user_id: str,
-    flags: featureflagshq.FeatureFlagsHQSDK = Depends(get_feature_flags)
-):
-    if flags.is_flag_enabled_for_user(user_id, "new_api"):
-        return {"version": "v2", "features": ["advanced"]}
-    return {"version": "v1", "features": ["basic"]}
+# All flag evaluations will use default values in offline mode
+result = sdk.get_bool("user_123", "feature_flag", default_value=True)
 ```
 
-## 🔐 Security Features
+## ⚠️ Error Handling
 
-- **HMAC Authentication**: Cryptographic request signing
-- **Rate Limiting**: Per-user request throttling  
-- **Input Validation**: Sanitization and bounds checking
-- **Circuit Breaker**: Automatic failure recovery
-- **Security Logging**: Audit trail for suspicious activity
-- **Memory Protection**: Automatic cleanup and monitoring
-
-## 📊 Analytics & Monitoring
+The SDK includes comprehensive error handling and graceful degradation:
 
 ```python
-# Get comprehensive stats
-stats = client.get_stats()
-print(f"Total evaluations: {stats['total_user_accesses']}")
-print(f"Avg evaluation time: {stats['evaluation_times']['avg_ms']}ms")
-
-# Health check
-health = client.get_health_check()
-print(f"Status: {health['status']}")
-print(f"Cached flags: {health['cached_flags_count']}")
-
-# Security metrics
-security_stats = client.get_security_stats()
-print(f"Blocked requests: {security_stats['blocked_malicious_requests']}")
-```
-
-## 🧪 Testing
-
-### Unit Testing with Mock Client
-
-```python
-import pytest
-from unittest.mock import Mock
-import featureflagshq
-
-def test_feature_enabled():
-    # Mock the client
-    mock_client = Mock(spec=featureflagshq.FeatureFlagsHQSDK)
-    mock_client.is_flag_enabled_for_user.return_value = True
-    
-    # Test your code
-    result = my_function_that_uses_flags(mock_client)
-    assert result == "new_feature_result"
-
-def test_with_offline_mode():
-    # Use offline mode for testing
-    client = featureflagshq.create_client(
-        client_id="test-id",
-        client_secret="test-secret", 
-        offline_mode=True
+try:
+    sdk = FeatureFlagsHQSDK(
+        client_id="invalid_client_id",
+        client_secret="invalid_secret"
     )
     
-    # Will return default values
-    enabled = client.is_flag_enabled_for_user("test-user", "test-flag")
-    assert enabled == False  # Default for boolean flags
+    # SDK will continue to work but use default values
+    # Check health to see if there are authentication issues
+    health = sdk.get_health_check()
+    if health['status'] != 'healthy':
+        print(f"SDK not healthy: {health}")
+        
+except ValueError as e:
+    print(f"Configuration error: {e}")
+except Exception as e:
+    print(f"Unexpected error: {e}")
 ```
 
-## 📖 API Reference
+## ✅ Best Practices
 
-### Main Client Methods
+### 1️⃣ Singleton Pattern
+Create one SDK instance per application and reuse it:
 
-| Method | Description | Returns |
-|--------|-------------|---------|
-| `get(user_id, flag_key, default_value, segments)` | Get flag value with type auto-detection | `Any` |
-| `get_bool(user_id, flag_key, default_value, segments)` | Get boolean flag | `bool` |
-| `get_string(user_id, flag_key, default_value, segments)` | Get string flag | `str` |
-| `get_int(user_id, flag_key, default_value, segments)` | Get integer flag | `int` |
-| `get_float(user_id, flag_key, default_value, segments)` | Get float flag | `float` |
-| `get_json(user_id, flag_key, default_value, segments)` | Get JSON object flag | `dict` |
-| `is_flag_enabled_for_user(user_id, flag_key, segments)` | Check if flag is enabled | `bool` |
-| `get_user_flags(user_id, segments, flag_keys)` | Get multiple flags | `Dict[str, Any]` |
+```python
+# Good
+sdk = FeatureFlagsHQSDK(client_id="...", client_secret="...")
+# Reuse sdk throughout your application
 
-### Management Methods
-
-| Method | Description | Returns |
-|--------|-------------|---------|
-| `refresh_flags()` | Manually refresh flags | `bool` |
-| `get_all_flags()` | Get all cached flags | `Dict[str, Dict]` |
-| `get_stats()` | Get usage statistics | `Dict` |
-| `get_health_check()` | Get system health | `Dict` |
-| `flush_logs()` | Upload pending logs | `bool` |
-| `shutdown()` | Graceful shutdown | `None` |
-
-## 🔧 Configuration Options
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `client_id` | `str` | Required | Your FeatureFlagsHQ client ID |
-| `client_secret` | `str` | Required | Your FeatureFlagsHQ client secret |
-| `api_base_url` | `str` | `https://api.featureflagshq.com` | API endpoint |
-| `environment` | `str` | `production` | Environment name |
-| `polling_interval` | `int` | `300` | Background sync interval (seconds) |
-| `log_upload_interval` | `int` | `120` | Log upload interval (seconds) |
-| `timeout` | `int` | `30` | Request timeout (seconds) |
-| `max_retries` | `int` | `3` | Maximum retry attempts |
-| `enable_metrics` | `bool` | `True` | Enable analytics collection |
-| `offline_mode` | `bool` | `False` | Disable API calls (testing) |
-| `debug` | `bool` | `False` | Enable debug logging |
-
-## 🤝 Contributing
-
-We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
-
-### Development Setup
-
-```bash
-# Clone the repository
-git clone https://github.com/featureflagshq/python-sdk.git
-cd python-sdk
-
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install development dependencies
-pip install -e ".[dev,test,docs]"
-
-# Install pre-commit hooks
-pre-commit install
-
-# Run tests
-pytest
-
-# Run linting
-black src tests
-isort src tests
-flake8 src tests
-mypy src
+# Bad - creates multiple instances
+def get_flag():
+    sdk = FeatureFlagsHQSDK(client_id="...", client_secret="...")
+    return sdk.get_bool("user", "flag")
 ```
 
-## 📝 License
+### 2️⃣ Always Provide Default Values
+```python
+# Good - provides fallback behavior
+is_enabled = sdk.get_bool("user_123", "new_feature", default_value=False)
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+# Risky - might return None in error cases
+is_enabled = sdk.get_bool("user_123", "new_feature")
+```
+
+### 3️⃣ Use Context Managers for Short-lived Usage
+```python
+# For scripts or short-lived processes
+with FeatureFlagsHQSDK(client_id="...", client_secret="...") as sdk:
+    result = sdk.get_bool("user", "flag")
+    # Automatic cleanup
+```
+
+### 4️⃣ Monitor SDK Health
+```python
+# Periodically check SDK health in production
+health = sdk.get_health_check()
+if health['status'] != 'healthy':
+    # Alert your monitoring system
+    logger.warning(f"FeatureFlags SDK unhealthy: {health}")
+```
+
+## 📚 API Reference
+
+### 🎯 Main Methods
+
+- `get(user_id, flag_name, default_value, segments)` - Get flag value with type inference
+- `get_bool(user_id, flag_name, default_value, segments)` - Get boolean flag
+- `get_string(user_id, flag_name, default_value, segments)` - Get string flag
+- `get_int(user_id, flag_name, default_value, segments)` - Get integer flag
+- `get_float(user_id, flag_name, default_value, segments)` - Get float flag
+- `get_json(user_id, flag_name, default_value, segments)` - Get JSON flag
+- `get_user_flags(user_id, segments, flag_keys)` - Get multiple flags for user
+- `is_flag_enabled_for_user(user_id, flag_name, segments)` - Check if flag is enabled
+
+### 🛠️ Management Methods
+
+- `refresh_flags()` - Manually refresh flags from server
+- `flush_logs()` - Upload pending analytics logs
+- `get_all_flags()` - Get all cached flag definitions
+- `get_stats()` - Get SDK usage statistics
+- `get_health_check()` - Get SDK health status
+- `shutdown()` - Clean shutdown of background threads
+
+## 🔐 Security
+
+The SDK implements multiple security layers:
+
+- **HMAC Authentication**: All API requests are signed with HMAC-SHA256
+- **Input Validation**: All inputs are validated and sanitized
+- **Security Filtering**: Sensitive data is filtered from logs
+- **Rate Limiting**: Per-user rate limiting prevents abuse
+- **Circuit Breaker**: Automatic failure detection and recovery
 
 ## 🆘 Support
 
-- **Documentation**: [GitHub](https://github.com/featureflagshq/python-sdk)
+- **Documentation**: [Official docs](https://featureflagshq.com/documentation/)
 - **Issues**: [GitHub Issues](https://github.com/featureflagshq/python-sdk/issues)
-- **Security**: [Security Policy](SECURITY.md)
-- **Email**: [hello@featureflagshq.com](mailto:hello@featureflagshq.com)
+- **Email**: hello@featureflagshq.com
 
-## 🗺️ Roadmap
+## 📄 License
 
-- [ ] Async/await support
-- [ ] Redis caching backend
-- [ ] Streaming real-time updates
-- [ ] Advanced A/B testing utilities
-- [ ] Multi-environment configuration
-- [ ] Custom targeting rules engine
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## 📋 Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for version history and updates.
 
 ---
 
