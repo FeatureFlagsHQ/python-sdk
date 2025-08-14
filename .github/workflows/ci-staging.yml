@@ -40,7 +40,8 @@ jobs:
       - name: Run tests with pytest
         run: |
           # pytest and pytest-cov are already installed above
-          pytest --cov=./ --cov-report=xml
+          # ensures code coverage
+          pytest --cov=./ --cov-report=xml --cov-fail-under=90
 
       - name: Upload coverage to Codecov (optional)
         uses: codecov/codecov-action@v3
@@ -51,10 +52,11 @@ jobs:
         continue-on-error: true
 
   publish-testpypi:
+    name: Publish to TestPyPI (Staging)
     needs: test
     runs-on: ubuntu-latest
-    # Only publish to TestPyPI when PR is merged into staging branch
-    if: github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'staging'
+    # Publish to TestPyPI on push to staging branch (including PR merges)
+    if: github.ref == 'refs/heads/staging' && github.event_name == 'push'
 
     steps:
       - uses: actions/checkout@v4
@@ -69,6 +71,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install build twine
 
+      - name: Get package version
+        id: version
+        run: |
+          python -c "import featureflagshq; print('version=' + featureflagshq.__version__)" >> $GITHUB_OUTPUT
+
       - name: Build package
         run: python -m build
 
@@ -80,9 +87,17 @@ jobs:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN }}
         run: |
-          twine upload --repository testpypi dist/*
+          echo "Publishing version ${{ steps.version.outputs.version }} to TestPyPI"
+          # Use --skip-existing to avoid errors if version already exists
+          twine upload --repository testpypi dist/* --verbose --skip-existing
+
+      - name: Report TestPyPI Publication
+        run: |
+          echo "✅ Successfully published version ${{ steps.version.outputs.version }} to TestPyPI"
+          echo "📦 Install with: pip install -i https://test.pypi.org/simple/ featureflagshq==${{ steps.version.outputs.version }}"
 
   publish-pypi:
+    name: Publish to PyPI (Production)
     needs: test
     runs-on: ubuntu-latest
     # Only publish to PyPI when code is pushed directly to master branch
@@ -101,6 +116,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install build twine
 
+      - name: Get package version
+        id: version
+        run: |
+          python -c "import featureflagshq; print('version=' + featureflagshq.__version__)" >> $GITHUB_OUTPUT
+
       - name: Build package
         run: python -m build
 
@@ -112,4 +132,34 @@ jobs:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
         run: |
-          twine upload dist/*
+          echo "Publishing version ${{ steps.version.outputs.version }} to PyPI"
+          # For production, fail if version exists (no --skip-existing)
+          twine upload dist/* --verbose
+
+      - name: Create GitHub Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          release_name: Release v${{ steps.version.outputs.version }}
+          body: |
+            ## Release v${{ steps.version.outputs.version }}
+            
+            This release has been automatically published to PyPI.
+            
+            ### Installation
+            ```bash
+            pip install featureflagshq==${{ steps.version.outputs.version }}
+            ```
+            
+            ### Changelog
+            See [CHANGELOG.md](https://github.com/featureflagshq/python-sdk/blob/master/CHANGELOG.md) for detailed changes.
+          draft: false
+          prerelease: false
+
+      - name: Report PyPI Publication
+        run: |
+          echo "🎉 Successfully published version ${{ steps.version.outputs.version }} to PyPI"
+          echo "📦 Install with: pip install featureflagshq==${{ steps.version.outputs.version }}"
+          echo "🏷️ GitHub Release: https://github.com/featureflagshq/python-sdk/releases/tag/v${{ steps.version.outputs.version }}"
