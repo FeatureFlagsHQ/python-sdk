@@ -126,7 +126,7 @@ We welcome various types of contributions:
    git push origin feature/add-batch-evaluation
    ```
 
-8. **Open a pull request** on `master` branch with:
+8. **Open a pull request** on `staging` branch with:
    - Clear title and description
    - Reference to related issues (e.g., "Closes #123")
    - Examples of the new functionality

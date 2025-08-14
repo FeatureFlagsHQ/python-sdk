@@ -1,4 +1,4 @@
-name: CI/CD - Test and Publish
+name: Test and Publish to PyPI
 
 on:
   push:
@@ -40,7 +40,7 @@ jobs:
       - name: Run tests with pytest
         run: |
           # pytest and pytest-cov are already installed above
-          # --cov-fail-under=80 ensures minimum 80% code coverage
+          # ensures code coverage
           pytest --cov=./ --cov-report=xml --cov-fail-under=90
 
       - name: Upload coverage to Codecov (optional)
