@@ -40,7 +40,8 @@ jobs:
       - name: Run tests with pytest
         run: |
           # pytest and pytest-cov are already installed above
-          pytest --cov=./ --cov-report=xml
+          # --cov-fail-under=80 ensures minimum 80% code coverage
+          pytest --cov=./ --cov-report=xml --cov-fail-under=90
 
       - name: Upload coverage to Codecov (optional)
         uses: codecov/codecov-action@v3
