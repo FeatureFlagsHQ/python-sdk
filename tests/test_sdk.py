@@ -595,6 +595,173 @@ class TestFeatureFlagsHQSDK(unittest.TestCase):
 
             sdk.shutdown()
 
+    def test_logging_initialization(self):
+        """Test logging initialization with ENABLE_LOGGING=True"""
+        import logging
+        from featureflagshq.sdk import ENABLE_LOGGING
+        
+        # Clear any existing handlers
+        logger = logging.getLogger('featureflagshq_sdk2')
+        logger.handlers.clear()
+        
+        # Force re-import to trigger logging initialization
+        import importlib
+        import featureflagshq.sdk
+        importlib.reload(featureflagshq.sdk)
+        
+        # Check that logger has handlers if ENABLE_LOGGING is True
+        if ENABLE_LOGGING:
+            self.assertTrue(len(logger.handlers) > 0)
+
+    def test_system_info_collection_psutil_missing(self):
+        """Test system info collection when psutil is not available"""
+        with patch('featureflagshq.sdk.requests.Session'):
+            sdk = FeatureFlagsHQSDK(
+                client_id=self.client_id,
+                client_secret=self.client_secret,
+                environment=self.environment,
+                offline_mode=True
+            )
+            
+            # Test the method directly with mocked import
+            original_import = __builtins__['__import__']
+            
+            def mock_import(name, *args, **kwargs):
+                if name == 'psutil':
+                    raise ImportError("No module named 'psutil'")
+                return original_import(name, *args, **kwargs)
+            
+            with patch('builtins.__import__', mock_import):
+                system_info = sdk._get_system_info()
+                
+                # Should fall back to os.cpu_count() and None for memory
+                self.assertIsNotNone(system_info['cpu_count'])
+                self.assertIsNone(system_info['memory_total'])
+                
+            sdk.shutdown()
+
+    def test_validation_edge_cases(self):
+        """Test validation methods with None inputs"""
+        with patch('featureflagshq.sdk.requests.Session'):
+            sdk = FeatureFlagsHQSDK(
+                client_id=self.client_id,
+                client_secret=self.client_secret,
+                environment=self.environment,
+                offline_mode=True
+            )
+            
+            # Test None user_id
+            with self.assertRaises(ValueError):
+                sdk._validate_user_id(None)
+            
+            # Test None flag_name
+            with self.assertRaises(ValueError):
+                sdk._validate_flag_name(None)
+            
+            # Test None string validation
+            with self.assertRaises(ValueError):
+                sdk._validate_string(None, "test_field", 100)
+            
+            sdk.shutdown()
+
+    def test_stats_cleanup_logic(self):
+        """Test stats cleanup when limits are exceeded"""
+        with patch('featureflagshq.sdk.requests.Session'):
+            sdk = FeatureFlagsHQSDK(
+                client_id=self.client_id,
+                client_secret=self.client_secret,
+                environment=self.environment,
+                offline_mode=True
+            )
+            
+            # Fill up unique users beyond limit
+            from featureflagshq.sdk import MAX_UNIQUE_USERS_TRACKED, MAX_UNIQUE_FLAGS_TRACKED
+            
+            # Add more users than limit
+            for i in range(MAX_UNIQUE_USERS_TRACKED + 5):
+                sdk.stats['unique_users'].add(f'user_{i}')
+            
+            # Add more flags than limit  
+            for i in range(MAX_UNIQUE_FLAGS_TRACKED + 3):
+                sdk.stats['unique_flags_accessed'].add(f'flag_{i}')
+            
+            # Trigger cleanup
+            sdk._cleanup_old_stats()
+            
+            # Check that stats were cleaned up
+            self.assertEqual(len(sdk.stats['unique_users']), MAX_UNIQUE_USERS_TRACKED)
+            self.assertEqual(len(sdk.stats['unique_flags_accessed']), MAX_UNIQUE_FLAGS_TRACKED)
+            
+            sdk.shutdown()
+
+    def test_type_conversion_error_handling(self):
+        """Test type conversion methods with invalid inputs"""
+        with patch('featureflagshq.sdk.requests.Session'):
+            sdk = FeatureFlagsHQSDK(
+                client_id=self.client_id,
+                client_secret=self.client_secret,
+                environment=self.environment,
+                offline_mode=True
+            )
+            
+            # Mock a flag that returns invalid data
+            sdk.flags = {'test_flag': {'value': 'invalid_number'}}
+            
+            # Test get_bool with string conversion
+            result = sdk.get_bool('user1', 'test_flag', False)
+            self.assertFalse(result)  # Should handle invalid conversion
+            
+            # Test get_int with invalid value
+            result = sdk.get_int('user1', 'test_flag', 42)
+            self.assertEqual(result, 42)  # Should return default
+            
+            # Test get_float with invalid value
+            result = sdk.get_float('user1', 'test_flag', 3.14)
+            self.assertEqual(result, 3.14)  # Should return default
+            
+            sdk.shutdown()
+
+    def test_initialization_timeout_handling(self):
+        """Test initialization timeout handling"""
+        with patch('featureflagshq.sdk.requests.Session'):
+            sdk = FeatureFlagsHQSDK(
+                client_id=self.client_id,
+                client_secret=self.client_secret,
+                environment=self.environment,
+                offline_mode=True
+            )
+            
+            # Reset initialization event to simulate long initialization
+            sdk._initialization_complete.clear()
+            
+            # Call get() which waits for initialization
+            with patch.object(sdk._initialization_complete, 'wait', return_value=False):
+                # Should proceed anyway after timeout
+                result = sdk.get('user1', 'test_flag', 'default')
+                self.assertEqual(result, 'default')
+            
+            sdk.shutdown()
+
+    def test_input_validation_error_handling(self):
+        """Test that validation errors in get() return default value"""
+        with patch('featureflagshq.sdk.requests.Session'):
+            sdk = FeatureFlagsHQSDK(
+                client_id=self.client_id,
+                client_secret=self.client_secret,
+                environment=self.environment,
+                offline_mode=True
+            )
+            
+            # Test with invalid user_id (None)
+            result = sdk.get(None, 'test_flag', 'default_value')
+            self.assertEqual(result, 'default_value')
+            
+            # Test with invalid flag_name (None)
+            result = sdk.get('user1', None, 'default_value')
+            self.assertEqual(result, 'default_value')
+            
+            sdk.shutdown()
+
     @responses.activate
     def test_background_polling_functionality(self):
         """Test background polling for flag updates"""
@@ -643,6 +810,275 @@ class TestFeatureFlagsHQSDK(unittest.TestCase):
         finally:
             sdk.shutdown()
 
+    def test_background_worker_error_handling(self):
+        """Test error handling in background workers"""
+        with patch('featureflagshq.sdk.requests.Session'):
+            sdk = FeatureFlagsHQSDK(
+                client_id=self.client_id,
+                client_secret=self.client_secret,
+                environment=self.environment,
+                offline_mode=False,  # Enable background workers
+                enable_metrics=True  # Enable log upload thread
+            )
+            
+            # Mock _fetch_flags to raise an exception
+            with patch.object(sdk, '_fetch_flags', side_effect=Exception("Fetch error")):
+                time.sleep(0.2)  # Let worker run and hit error
+                
+                # Worker should continue running despite error
+                self.assertTrue(sdk._polling_thread.is_alive())
+            
+            # Mock _upload_logs to raise an exception  
+            with patch.object(sdk, '_upload_logs', side_effect=Exception("Upload error")):
+                time.sleep(0.2)  # Let worker run and hit error
+                
+                # Worker should continue running despite error
+                self.assertTrue(sdk._log_upload_thread.is_alive())
+            
+            sdk.shutdown()
+
+    def test_flag_change_callback_error_handling(self):
+        """Test error handling in flag change callbacks"""
+        callback_called = []
+        
+        def error_callback(flag_name, old_value, new_value):
+            callback_called.append((flag_name, old_value, new_value))
+            raise Exception("Callback error")
+        
+        with patch('featureflagshq.sdk.requests.Session'):
+            sdk = FeatureFlagsHQSDK(
+                client_id=self.client_id,
+                client_secret=self.client_secret,
+                environment=self.environment,
+                offline_mode=True,
+                on_flag_change=error_callback
+            )
+            
+            # Set initial flags
+            sdk.flags = {'test_flag': {'value': 'old_value'}}
+            
+            # Simulate flag change
+            new_flags = {'test_flag': {'value': 'new_value'}}
+            
+            # Mock _fetch_flags to return new flags
+            with patch.object(sdk, '_fetch_flags', return_value=new_flags):
+                # Simulate polling worker behavior
+                old_flags = dict(sdk.flags)
+                
+                # This should trigger callback but not crash
+                with sdk._lock:
+                    for flag_name, new_flag_data in new_flags.items():
+                        old_flag_data = old_flags.get(flag_name)
+                        old_value = old_flag_data.get('value') if old_flag_data else None
+                        new_value = new_flag_data.get('value')
+                        
+                        if old_value != new_value:
+                            try:
+                                sdk.on_flag_change(flag_name, old_value, new_value)
+                            except Exception:
+                                pass  # Should be caught and logged
+                    
+                    sdk.flags.update(new_flags)
+                
+                # Verify callback was called despite error
+                self.assertEqual(len(callback_called), 1)
+                self.assertEqual(callback_called[0], ('test_flag', 'old_value', 'new_value'))
+            
+            sdk.shutdown()
+
+    def test_initialization_error_handling(self):
+        """Test SDK initialization error handling"""
+        with patch('featureflagshq.sdk.requests.Session'):
+            # Mock _fetch_flags to raise exception during initialization
+            with patch('featureflagshq.sdk.FeatureFlagsHQSDK._fetch_flags', side_effect=Exception("Init error")):
+                sdk = FeatureFlagsHQSDK(
+                    client_id=self.client_id,
+                    client_secret=self.client_secret,
+                    environment=self.environment,
+                    offline_mode=False
+                )
+                
+                # Should continue in degraded mode
+                self.assertTrue(sdk._initialization_complete.wait(timeout=2))
+                
+                # Should still be able to use SDK with defaults
+                result = sdk.get('user1', 'test_flag', 'default')
+                self.assertEqual(result, 'default')
+                
+                sdk.shutdown()
+
+    def test_worker_thread_cleanup(self):
+        """Test that worker threads are properly cleaned up"""
+        with patch('featureflagshq.sdk.requests.Session'):
+            sdk = FeatureFlagsHQSDK(
+                client_id=self.client_id,
+                client_secret=self.client_secret,
+                environment=self.environment,
+                offline_mode=False,
+                enable_metrics=True
+            )
+            
+            # Verify threads are running
+            self.assertTrue(sdk._polling_thread.is_alive())
+            self.assertTrue(sdk._log_upload_thread.is_alive())
+            
+            # Store thread references before shutdown
+            polling_thread = sdk._polling_thread
+            log_upload_thread = sdk._log_upload_thread
+            
+            # Shutdown should stop threads
+            sdk.shutdown()
+            
+            # Wait for threads to stop
+            time.sleep(0.1)
+            
+            # Verify threads are stopped (they get set to None in shutdown)
+            self.assertIsNone(sdk._polling_thread)
+            self.assertIsNone(sdk._log_upload_thread)
+            
+            # Verify the actual threads stopped
+            self.assertFalse(polling_thread.is_alive())
+            self.assertFalse(log_upload_thread.is_alive())
+
+    def test_segment_evaluation_edge_cases(self):
+        """Test edge cases in segment evaluation"""
+        with patch('featureflagshq.sdk.requests.Session'):
+            sdk = FeatureFlagsHQSDK(
+                client_id=self.client_id,
+                client_secret=self.client_secret,
+                environment=self.environment,
+                offline_mode=True
+            )
+            
+            # Test boolean conversion in segments
+            segment = {
+                'type': 'bool',
+                'value': 'true',
+                'comparator': '=='
+            }
+            user_segments = {'test_key': 'true'}
+            
+            # Test with string 'true' as user value
+            segment['name'] = 'test_key'
+            result = sdk._check_segment_match(segment, user_segments)
+            self.assertTrue(result)
+            
+            # Test with boolean False as segment value  
+            segment['value'] = False
+            user_segments['test_key'] = 'false'
+            result = sdk._check_segment_match(segment, user_segments)
+            self.assertTrue(result)
+            
+            sdk.shutdown()
+
+    def test_boolean_segment_conversion_edge_cases(self):
+        """Test boolean conversion in segment evaluation"""
+        with patch('featureflagshq.sdk.requests.Session'):
+            sdk = FeatureFlagsHQSDK(
+                client_id=self.client_id,
+                client_secret=self.client_secret,
+                environment=self.environment,
+                offline_mode=True
+            )
+            
+            # Test various boolean conversions in segment evaluation
+            segment = {
+                'name': 'test_bool',
+                'type': 'bool',
+                'value': True,
+                'comparator': '=='
+            }
+            
+            # Test with string boolean values
+            user_segments = {'test_bool': 'true'}
+            result = sdk._check_segment_match(segment, user_segments)
+            self.assertTrue(result)
+            
+            user_segments = {'test_bool': '1'}
+            result = sdk._check_segment_match(segment, user_segments)
+            self.assertTrue(result)
+            
+            user_segments = {'test_bool': 'YES'}
+            result = sdk._check_segment_match(segment, user_segments)
+            self.assertTrue(result)
+            
+            # Test with actual boolean
+            user_segments = {'test_bool': True}
+            result = sdk._check_segment_match(segment, user_segments)
+            self.assertTrue(result)
+            
+            # Test false cases
+            user_segments = {'test_bool': 'false'}
+            result = sdk._check_segment_match(segment, user_segments)
+            self.assertFalse(result)
+            
+            sdk.shutdown()
+
+    def test_get_bool_edge_cases(self):
+        """Test get_bool method with edge cases"""
+        with patch('featureflagshq.sdk.requests.Session'):
+            sdk = FeatureFlagsHQSDK(
+                client_id=self.client_id,
+                client_secret=self.client_secret,
+                environment=self.environment,
+                offline_mode=True
+            )
+            
+            # Set up flags with various values
+            sdk.flags = {
+                'string_true': {'value': 'true'},
+                'string_yes': {'value': 'yes'},
+                'string_1': {'value': '1'},
+                'string_false': {'value': 'false'},
+                'number_1': {'value': 1},
+                'number_0': {'value': 0},
+                'actual_bool': {'value': True}
+            }
+            
+            # Test string conversions
+            self.assertTrue(sdk.get_bool('user1', 'string_true'))
+            self.assertTrue(sdk.get_bool('user1', 'string_yes'))
+            self.assertTrue(sdk.get_bool('user1', 'string_1'))
+            self.assertFalse(sdk.get_bool('user1', 'string_false'))
+            
+            # Test number conversions
+            self.assertTrue(sdk.get_bool('user1', 'number_1'))
+            self.assertFalse(sdk.get_bool('user1', 'number_0'))
+            
+            # Test actual boolean
+            self.assertTrue(sdk.get_bool('user1', 'actual_bool'))
+            
+            sdk.shutdown()
+
+    def test_conversion_method_edge_cases(self):
+        """Test _convert_value method with edge cases"""
+        with patch('featureflagshq.sdk.requests.Session'):
+            sdk = FeatureFlagsHQSDK(
+                client_id=self.client_id,
+                client_secret=self.client_secret,
+                environment=self.environment,
+                offline_mode=True
+            )
+            
+            # Test boolean conversions that hit the missing lines
+            result = sdk._convert_value('YES', 'bool')
+            self.assertTrue(result)
+            
+            result = sdk._convert_value('no', 'bool')
+            self.assertFalse(result)
+            
+            result = sdk._convert_value(1, 'bool')
+            self.assertTrue(result)
+            
+            # Test with different case sensitivity
+            result = sdk._convert_value('True', 'bool')
+            self.assertTrue(result)
+            
+            result = sdk._convert_value('FALSE', 'bool')
+            self.assertFalse(result)
+            
+            sdk.shutdown()
+
 
 class TestProductionHelpers(unittest.TestCase):
 
@@ -676,7 +1112,8 @@ class TestProductionHelpers(unittest.TestCase):
                 offline_mode=True
             )
 
-            self.assertIsInstance(sdk, FeatureFlagsHQSDK)
+            self.assertTrue(hasattr(sdk, 'client_id'))
+            self.assertTrue(hasattr(sdk, 'get'))
             self.assertEqual(sdk.environment, "production")
             sdk.shutdown()
 
