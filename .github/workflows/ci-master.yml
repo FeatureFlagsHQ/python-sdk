@@ -1,11 +1,9 @@
 name: Test and Publish to PyPI (Production)
 
 on:
-  # Run tests on PRs to master
+  # Run tests on PRs and publish when merged
   pull_request:
-    branches: [ main, master ]
-  # Publish when code is merged to master
-  push:
+    types: [opened, synchronize, closed]
     branches: [ main, master ]
 
 jobs:
@@ -57,8 +55,8 @@ jobs:
     name: Publish to PyPI
     needs: test
     runs-on: ubuntu-latest
-    # Only publish when code is merged to master (push event, not PR)
-    if: github.event_name == 'push'
+    # Only publish when a PR is merged (closed AND merged)
+    if: github.event.action == 'closed' && github.event.pull_request.merged == true
 
     steps:
       - uses: actions/checkout@v4
