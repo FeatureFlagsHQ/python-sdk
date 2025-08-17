@@ -7,7 +7,7 @@ A secure, high-performance Python SDK for FeatureFlagsHQ feature flag management
 from .sdk import FeatureFlagsHQSDK, create_production_client, validate_production_config
 
 # SDK Constants
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 SDK_VERSION = __version__
 DEFAULT_API_BASE_URL = "https://api.featureflagshq.com"
 COMPANY_NAME = "FeatureFlagsHQ"
