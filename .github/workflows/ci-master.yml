@@ -89,15 +89,6 @@ jobs:
       - name: Check package
         run: twine check dist/*
 
-      - name: Publish to PyPI
-        env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-        run: |
-          echo "Publishing version ${{ steps.version.outputs.version }} to PyPI"
-          # For production, fail if version exists (no --skip-existing)
-          twine upload dist/* --verbose
-
       - name: Create Git Tag
         run: |
           git config --local user.email "action@github.com"
@@ -113,7 +104,7 @@ jobs:
           body: |
             ## Release v${{ steps.version.outputs.version }}
             
-            This release has been automatically published to PyPI.
+            This release will be published to PyPI.
             
             ### Installation
             ```bash
@@ -127,8 +118,39 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Publish to PyPI
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          echo "Publishing version ${{ steps.version.outputs.version }} to PyPI"
+          # For production, fail if version exists (no --skip-existing)
+          twine upload dist/* --verbose
+
       - name: Report PyPI Publication
         run: |
           echo "🎉 Successfully published version ${{ steps.version.outputs.version }} to PyPI"
           echo "📦 Install with: pip install featureflagshq==${{ steps.version.outputs.version }}"
           echo "🏷️ GitHub Release: https://github.com/featureflagshq/python-sdk/releases/tag/v${{ steps.version.outputs.version }}"
+
+      - name: Update Release Notes
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: Release v${{ steps.version.outputs.version }}
+          body: |
+            ## Release v${{ steps.version.outputs.version }}
+            
+            This release has been successfully published to PyPI.
+            
+            ### Installation
+            ```bash
+            pip install featureflagshq==${{ steps.version.outputs.version }}
+            ```
+            
+            ### Changelog
+            See [CHANGELOG.md](https://github.com/featureflagshq/python-sdk/blob/master/CHANGELOG.md) for detailed changes.
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
