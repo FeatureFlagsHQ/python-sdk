@@ -1,10 +1,10 @@
-name: Test and Publish to TestPyPI (Staging)
+name: Test and Publish to PyPI (Production)
 
 on:
   # Run tests on PRs and publish when merged
   pull_request:
     types: [opened, synchronize, closed]
-    branches: [ staging ]
+    branches: [ main, master ]
 
 jobs:
   test:
@@ -51,8 +51,8 @@ jobs:
           name: codecov-umbrella
         continue-on-error: true
 
-  publish-testpypi:
-    name: Publish to TestPyPI
+  publish-pypi:
+    name: Publish to PyPI
     needs: test
     runs-on: ubuntu-latest
     # Only publish when a PR is merged (closed AND merged)
@@ -82,16 +82,39 @@ jobs:
       - name: Check package
         run: twine check dist/*
 
-      - name: Publish to TestPyPI
+      - name: Publish to PyPI
         env:
           TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN }}
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
         run: |
-          echo "Publishing version ${{ steps.version.outputs.version }} to TestPyPI"
-          # Use --skip-existing to avoid errors if version already exists
-          twine upload --repository testpypi dist/* --verbose --skip-existing
+          echo "Publishing version ${{ steps.version.outputs.version }} to PyPI"
+          # For production, fail if version exists (no --skip-existing)
+          twine upload dist/* --verbose
 
-      - name: Report TestPyPI Publication
+      - name: Create GitHub Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          release_name: Release v${{ steps.version.outputs.version }}
+          body: |
+            ## Release v${{ steps.version.outputs.version }}
+            
+            This release has been automatically published to PyPI.
+            
+            ### Installation
+            ```bash
+            pip install featureflagshq==${{ steps.version.outputs.version }}
+            ```
+            
+            ### Changelog
+            See [CHANGELOG.md](https://github.com/featureflagshq/python-sdk/blob/master/CHANGELOG.md) for detailed changes.
+          draft: false
+          prerelease: false
+
+      - name: Report PyPI Publication
         run: |
-          echo "✅ Successfully published version ${{ steps.version.outputs.version }} to TestPyPI"
-          echo "📦 Install with: pip install -i https://test.pypi.org/simple/ featureflagshq==${{ steps.version.outputs.version }}"
+          echo "🎉 Successfully published version ${{ steps.version.outputs.version }} to PyPI"
+          echo "📦 Install with: pip install featureflagshq==${{ steps.version.outputs.version }}"
+          echo "🏷️ GitHub Release: https://github.com/featureflagshq/python-sdk/releases/tag/v${{ steps.version.outputs.version }}"

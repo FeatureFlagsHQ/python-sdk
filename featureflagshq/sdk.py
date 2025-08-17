@@ -27,7 +27,7 @@ try:
     from . import SDK_VERSION, DEFAULT_API_BASE_URL, USER_AGENT_PREFIX, COMPANY_NAME
 except ImportError:
     # Fallback for direct execution
-    SDK_VERSION = "1.0.0"
+    SDK_VERSION = "1.0.1"
     DEFAULT_API_BASE_URL = "https://api.featureflagshq.com"
     COMPANY_NAME = "FeatureFlagsHQ"
     USER_AGENT_PREFIX = f"{COMPANY_NAME}-Python-SDK"
